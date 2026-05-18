@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from importlib.resources import files
+from typing import Any
+
+
+@dataclass(frozen=True)
+class ConnectionOptions:
+    dsn: str | None = None
+    host: str | None = None
+    port: int | None = None
+    user: str | None = None
+    password: str | None = None
+
+    def connect(self, dbname: str | None = None, autocommit: bool = False):
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as exc:
+            raise RuntimeError(
+                "Missing dependency psycopg. Install with: python3 -m pip install -e ."
+            ) from exc
+
+        kwargs: dict[str, Any] = {"row_factory": dict_row, "autocommit": autocommit}
+        if dbname:
+            kwargs["dbname"] = dbname
+        if self.host:
+            kwargs["host"] = self.host
+        if self.port:
+            kwargs["port"] = self.port
+        if self.user:
+            kwargs["user"] = self.user
+        if self.password:
+            kwargs["password"] = self.password
+
+        if self.dsn:
+            return psycopg.connect(self.dsn, **kwargs)
+        return psycopg.connect(**kwargs)
+
+
+def read_sql(name: str) -> str:
+    return files("pgcollcheck").joinpath("sql", name).read_text(encoding="utf-8")
