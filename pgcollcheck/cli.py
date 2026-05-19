@@ -6,8 +6,13 @@ import sys
 
 from .db import ConnectionOptions
 from .discovery import list_databases
-from .models import VERDICT_REINDEX_BY_VERSION
-from .reports import write_reindex_plan, write_scan_report
+from .models import (
+    AMCHECK_FAILED,
+    VERDICT_REINDEX_BY_AMCHECK,
+    VERDICT_REINDEX_BY_BOTH,
+    VERDICT_REINDEX_BY_VERSION,
+)
+from .reports import write_compare_report, write_reindex_plan, write_scan_report, write_verify_report
 from .scanner import scan_databases
 
 
@@ -25,6 +30,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "scan":
             return run_scan(args, options)
+        if args.command == "verify":
+            return run_verify(args, options)
+        if args.command == "compare":
+            return run_compare(args, options)
         if args.command == "plan-reindex":
             return run_plan_reindex(args, options)
     except Exception as exc:
@@ -44,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan = subparsers.add_parser("scan", parents=[connection_parent()], help="compare stored and actual collation versions")
     add_scan_args(scan)
+
+    verify = subparsers.add_parser("verify", parents=[connection_parent()], help="run amcheck for B-tree indexes with collatable keys")
+    add_verify_args(verify)
+
+    compare = subparsers.add_parser("compare", parents=[connection_parent()], help="combine catalog scan and amcheck verification")
+    add_compare_args(compare)
 
     plan = subparsers.add_parser("plan-reindex", parents=[connection_parent()], help="generate SQL commands for indexes that need REINDEX")
     add_scan_args(plan)
@@ -85,6 +100,32 @@ def add_scan_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--strict-exit-code", action="store_true", help="Return code 2 when REINDEX is recommended.")
 
 
+def add_verify_args(parser: argparse.ArgumentParser) -> None:
+    add_scan_args(parser)
+    parser.add_argument(
+        "--mode",
+        choices=("quick", "normal", "deep"),
+        default="normal",
+        help="amcheck mode. quick skips heapallindexed, deep uses bt_index_parent_check.",
+    )
+    parser.add_argument("--install-extension", action="store_true", help="Create amcheck if it is missing.")
+    parser.add_argument("--lock-timeout", default="5s", help="PostgreSQL lock_timeout for amcheck.")
+    parser.add_argument("--statement-timeout", default="30min", help="PostgreSQL statement_timeout for amcheck.")
+
+
+def add_compare_args(parser: argparse.ArgumentParser) -> None:
+    add_scan_args(parser)
+    parser.add_argument(
+        "--verify-mode",
+        choices=("quick", "normal", "deep"),
+        default="normal",
+        help="amcheck mode used by compare.",
+    )
+    parser.add_argument("--install-extension", action="store_true", help="Create amcheck if it is missing.")
+    parser.add_argument("--lock-timeout", default="5s", help="PostgreSQL lock_timeout for amcheck.")
+    parser.add_argument("--statement-timeout", default="30min", help="PostgreSQL statement_timeout for amcheck.")
+
+
 def run_scan(args: argparse.Namespace, options: ConnectionOptions) -> int:
     databases = resolve_databases(args, options)
     results = scan_databases(
@@ -101,6 +142,53 @@ def run_scan(args: argparse.Namespace, options: ConnectionOptions) -> int:
     return 0
 
 
+def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
+    from .amcheck import verify_databases
+
+    databases = resolve_databases(args, options)
+    results = verify_databases(
+        options=options,
+        databases=databases,
+        mode=args.mode,
+        provider=args.provider,
+        schema=args.schema,
+        include_system=args.include_system,
+        largest=args.largest,
+        install_extension=args.install_extension,
+        lock_timeout=args.lock_timeout,
+        statement_timeout=args.statement_timeout,
+    )
+    write_verify_report(results, args.format, args.output)
+    if args.strict_exit_code and any(result.status == AMCHECK_FAILED for result in results):
+        return 2
+    return 0
+
+
+def run_compare(args: argparse.Namespace, options: ConnectionOptions) -> int:
+    from .compare import compare_databases
+
+    databases = resolve_databases(args, options)
+    results = compare_databases(
+        options=options,
+        databases=databases,
+        provider=args.provider,
+        schema=args.schema,
+        include_system=args.include_system,
+        largest=args.largest,
+        verify_mode=args.verify_mode,
+        install_extension=args.install_extension,
+        lock_timeout=args.lock_timeout,
+        statement_timeout=args.statement_timeout,
+    )
+    write_compare_report(results, args.format, args.output)
+    if args.strict_exit_code and any(
+        result.final_decision in (VERDICT_REINDEX_BY_BOTH, VERDICT_REINDEX_BY_AMCHECK, VERDICT_REINDEX_BY_VERSION)
+        for result in results
+    ):
+        return 2
+    return 0
+
+
 def run_plan_reindex(args: argparse.Namespace, options: ConnectionOptions) -> int:
     databases = resolve_databases(args, options)
     results = scan_databases(
@@ -111,7 +199,8 @@ def run_plan_reindex(args: argparse.Namespace, options: ConnectionOptions) -> in
         include_system=args.include_system,
         largest=args.largest,
     )
-    write_scan_report(results, args.format, args.output)
+    if args.output:
+        write_scan_report(results, args.format, args.output)
     write_reindex_plan(results, args.sql_output)
     if args.strict_exit_code and any(result.decision == VERDICT_REINDEX_BY_VERSION for result in results):
         return 2

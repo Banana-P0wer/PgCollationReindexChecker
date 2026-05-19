@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
-from .models import ScanResult
+from .models import AmcheckResult, CompareResult, ScanResult
 
 
 def human_size(size: int | None) -> str:
@@ -30,6 +30,28 @@ def write_scan_report(
         write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
         return
     write_text(format_scan_table(results), output)
+
+
+def write_verify_report(
+    results: list[AmcheckResult],
+    output_format: str,
+    output: str | None = None,
+) -> None:
+    if output_format == "json":
+        write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
+        return
+    write_text(format_verify_table(results), output)
+
+
+def write_compare_report(
+    results: list[CompareResult],
+    output_format: str,
+    output: str | None = None,
+) -> None:
+    if output_format == "json":
+        write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
+        return
+    write_text(format_compare_table(results), output)
 
 
 def format_scan_table(results: list[ScanResult]) -> str:
@@ -68,6 +90,73 @@ def format_scan_table(results: list[ScanResult]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def format_verify_table(results: list[AmcheckResult]) -> str:
+    if not results:
+        return "No B-tree indexes with collatable keys were found.\n"
+
+    table_rows = [
+        {
+            "database": result.database_name,
+            "index": result.qualified_index,
+            "table": result.qualified_table,
+            "size": human_size(result.index_size_bytes),
+            "mode": result.mode,
+            "status": result.status,
+            "duration": "" if result.duration_ms is None else f"{result.duration_ms} ms",
+            "error": compact_error(result.error_message),
+        }
+        for result in results
+    ]
+    text = render_table(table_rows, ["database", "index", "table", "size", "mode", "status", "duration", "error"])
+    failed = [result for result in results if "FAILED" in result.status]
+    skipped = [result for result in results if result.status.startswith("SKIPPED")]
+
+    lines = [text, ""]
+    if failed:
+        lines.append("Indexes that should be rebuilt after amcheck failure:")
+        lines.extend(f"  {result.reindex_sql}" for result in failed)
+    else:
+        lines.append("No amcheck B-tree failures were reported.")
+
+    if skipped:
+        lines.append("")
+        lines.append("Skipped checks:")
+        lines.extend(f"  {result.database_name}: {result.qualified_index} ({result.status})" for result in skipped)
+
+    return "\n".join(lines) + "\n"
+
+
+def format_compare_table(results: list[CompareResult]) -> str:
+    if not results:
+        return "No B-tree indexes with collatable keys were found.\n"
+
+    table_rows = [
+        {
+            "database": result.scan.database_name,
+            "index": result.scan.qualified_index,
+            "catalog": result.scan.decision,
+            "amcheck": result.amcheck.status if result.amcheck else "",
+            "final": result.final_decision,
+            "reason": result.reason,
+        }
+        for result in results
+    ]
+    text = render_table(table_rows, ["database", "index", "catalog", "amcheck", "final", "reason"])
+    reindex_commands = [
+        result.scan.reindex_sql
+        for result in results
+        if "REINDEX" in result.final_decision
+    ]
+
+    lines = [text, ""]
+    if reindex_commands:
+        lines.append("REINDEX commands:")
+        lines.extend(f"  {command}" for command in reindex_commands)
+    else:
+        lines.append("No final REINDEX verdicts were produced.")
+    return "\n".join(lines) + "\n"
+
+
 def format_collations(result: ScanResult) -> str:
     parts: list[str] = []
     for dependency in result.dependencies:
@@ -80,6 +169,15 @@ def format_collations(result: ScanResult) -> str:
             version = f"{dependency.stored_version or '?'}->{dependency.actual_version or '?'}"
         parts.append(f"{dependency.key_name}:{name}/{provider}/{version}/{status}")
     return "; ".join(parts)
+
+
+def compact_error(message: str | None) -> str:
+    if not message:
+        return ""
+    first_line = message.splitlines()[0]
+    if len(first_line) > 90:
+        return first_line[:87] + "..."
+    return first_line
 
 
 def render_table(rows: list[dict[str, str]], columns: list[str]) -> str:

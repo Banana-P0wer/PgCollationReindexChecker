@@ -23,6 +23,12 @@ VERDICT_REINDEX_BY_AMCHECK = "REINDEX_REQUIRED_BY_AMCHECK"
 VERDICT_REINDEX_BY_BOTH = "REINDEX_REQUIRED_BY_BOTH"
 VERDICT_UNKNOWN = "UNKNOWN"
 
+AMCHECK_OK = "AMCHECK_OK"
+AMCHECK_FAILED = "AMCHECK_FAILED"
+AMCHECK_TIMEOUT = "AMCHECK_TIMEOUT"
+AMCHECK_SKIPPED_EXTENSION_MISSING = "SKIPPED_EXTENSION_MISSING"
+AMCHECK_UNKNOWN_ERROR = "UNKNOWN_ERROR"
+
 
 @dataclass
 class CollationDependency:
@@ -113,4 +119,66 @@ class ScanResult:
             "refresh_sql": self.refresh_sql,
             "decision": self.decision,
             "dependencies": [dependency.to_dict() for dependency in self.dependencies],
+        }
+
+
+@dataclass
+class AmcheckResult:
+    database_name: str
+    index_oid: int
+    index_schema: str
+    index_name: str
+    table_schema: str
+    table_name: str
+    index_size_bytes: int
+    mode: str
+    status: str
+    duration_ms: int | None
+    reindex_sql: str
+    index_definition: str
+    error_sqlstate: str | None = None
+    error_message: str | None = None
+
+    @property
+    def qualified_index(self) -> str:
+        return f"{self.index_schema}.{self.index_name}"
+
+    @property
+    def qualified_table(self) -> str:
+        return f"{self.table_schema}.{self.table_name}"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "database_name": self.database_name,
+            "index_oid": self.index_oid,
+            "index_schema": self.index_schema,
+            "index_name": self.index_name,
+            "qualified_index": self.qualified_index,
+            "table_schema": self.table_schema,
+            "table_name": self.table_name,
+            "qualified_table": self.qualified_table,
+            "index_size_bytes": self.index_size_bytes,
+            "mode": self.mode,
+            "status": self.status,
+            "duration_ms": self.duration_ms,
+            "error_sqlstate": self.error_sqlstate,
+            "error_message": self.error_message,
+            "reindex_sql": self.reindex_sql,
+            "index_definition": self.index_definition,
+        }
+
+
+@dataclass
+class CompareResult:
+    scan: ScanResult
+    amcheck: AmcheckResult | None
+    final_decision: str
+    reason: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "final_decision": self.final_decision,
+            "reason": self.reason,
+            "scan": self.scan.to_dict(),
+            "amcheck": self.amcheck.to_dict() if self.amcheck else None,
         }
