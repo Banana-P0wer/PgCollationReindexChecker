@@ -3,6 +3,7 @@ from __future__ import annotations
 from .amcheck import verify_databases
 from .decision import decide_compare_result
 from .models import CompareResult
+from .progress import ProgressReporter
 from .scanner import scan_databases
 
 
@@ -17,7 +18,9 @@ def compare_databases(
     install_extension: bool = False,
     lock_timeout: str = "5s",
     statement_timeout: str = "30min",
+    progress: ProgressReporter | None = None,
 ) -> list[CompareResult]:
+    progress = progress or ProgressReporter()
     scan_results = scan_databases(
         options=options,
         databases=databases,
@@ -25,6 +28,7 @@ def compare_databases(
         schema=schema,
         include_system=include_system,
         largest=largest,
+        progress=progress,
     )
     amcheck_results = verify_databases(
         options=options,
@@ -37,6 +41,7 @@ def compare_databases(
         install_extension=install_extension,
         lock_timeout=lock_timeout,
         statement_timeout=statement_timeout,
+        progress=progress,
     )
     amcheck_by_index = {
         (result.database_name, result.index_oid): result

@@ -15,6 +15,7 @@ from .models import (
     AMCHECK_UNKNOWN_ERROR,
     AmcheckResult,
 )
+from .progress import ProgressReporter
 from .scanner import build_scan_results
 
 
@@ -39,9 +40,12 @@ def verify_databases(
     install_extension: bool = False,
     lock_timeout: str = "5s",
     statement_timeout: str = "30min",
+    progress: ProgressReporter | None = None,
 ) -> list[AmcheckResult]:
+    progress = progress or ProgressReporter()
     results: list[AmcheckResult] = []
     for database in databases:
+        progress.database("verifying", database)
         results.extend(
             verify_database(
                 options=options,

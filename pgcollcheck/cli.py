@@ -6,14 +6,18 @@ import sys
 
 from .db import ConnectionOptions
 from .discovery import list_databases
+from .errors import PgCollCheckError
+from .exit_codes import ERROR, OK, REINDEX_RECOMMENDED, UNKNOWN
 from .models import (
     AMCHECK_FAILED,
     VERDICT_REINDEX_BY_AMCHECK,
     VERDICT_REINDEX_BY_BOTH,
     VERDICT_REINDEX_BY_VERSION,
 )
+from .progress import ProgressReporter
 from .reports import write_compare_report, write_reindex_plan, write_scan_report, write_verify_report
 from .scanner import scan_databases
+from .server import ensure_supported_postgres
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +32,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
+        if args.command:
+            ensure_supported_postgres(options, version_check_database(args))
         if args.command == "scan":
             return run_scan(args, options)
         if args.command == "verify":
@@ -36,12 +42,15 @@ def main(argv: list[str] | None = None) -> int:
             return run_compare(args, options)
         if args.command == "plan-reindex":
             return run_plan_reindex(args, options)
+    except PgCollCheckError as exc:
+        print(f"pgcollcheck: {exc}", file=sys.stderr)
+        return ERROR
     except Exception as exc:
         print(f"pgcollcheck: {exc}", file=sys.stderr)
-        return 1
+        return ERROR
 
     parser.print_help()
-    return 1
+    return ERROR
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -79,6 +88,7 @@ def connection_parent() -> argparse.ArgumentParser:
         default=os.environ.get("PGDATABASE") or "postgres",
         help="Database used to discover all databases. Default: postgres.",
     )
+    parser.add_argument("--progress", action="store_true", help="Print progress messages to stderr.")
     return parser
 
 
@@ -135,11 +145,10 @@ def run_scan(args: argparse.Namespace, options: ConnectionOptions) -> int:
         schema=args.schema,
         include_system=args.include_system,
         largest=args.largest,
+        progress=ProgressReporter(args.progress),
     )
     write_scan_report(results, args.format, args.output)
-    if args.strict_exit_code and any(result.decision == VERDICT_REINDEX_BY_VERSION for result in results):
-        return 2
-    return 0
+    return scan_exit_code(args.strict_exit_code, [result.decision for result in results])
 
 
 def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
@@ -157,11 +166,14 @@ def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
         install_extension=args.install_extension,
         lock_timeout=args.lock_timeout,
         statement_timeout=args.statement_timeout,
+        progress=ProgressReporter(args.progress),
     )
     write_verify_report(results, args.format, args.output)
     if args.strict_exit_code and any(result.status == AMCHECK_FAILED for result in results):
-        return 2
-    return 0
+        return REINDEX_RECOMMENDED
+    if args.strict_exit_code and any(result.status != "AMCHECK_OK" for result in results):
+        return UNKNOWN
+    return OK
 
 
 def run_compare(args: argparse.Namespace, options: ConnectionOptions) -> int:
@@ -179,14 +191,15 @@ def run_compare(args: argparse.Namespace, options: ConnectionOptions) -> int:
         install_extension=args.install_extension,
         lock_timeout=args.lock_timeout,
         statement_timeout=args.statement_timeout,
+        progress=ProgressReporter(args.progress),
     )
     write_compare_report(results, args.format, args.output)
     if args.strict_exit_code and any(
         result.final_decision in (VERDICT_REINDEX_BY_BOTH, VERDICT_REINDEX_BY_AMCHECK, VERDICT_REINDEX_BY_VERSION)
         for result in results
     ):
-        return 2
-    return 0
+        return REINDEX_RECOMMENDED
+    return scan_exit_code(args.strict_exit_code, [result.final_decision for result in results])
 
 
 def run_plan_reindex(args: argparse.Namespace, options: ConnectionOptions) -> int:
@@ -198,16 +211,31 @@ def run_plan_reindex(args: argparse.Namespace, options: ConnectionOptions) -> in
         schema=args.schema,
         include_system=args.include_system,
         largest=args.largest,
+        progress=ProgressReporter(args.progress),
     )
     if args.output:
         write_scan_report(results, args.format, args.output)
     write_reindex_plan(results, args.sql_output)
-    if args.strict_exit_code and any(result.decision == VERDICT_REINDEX_BY_VERSION for result in results):
-        return 2
-    return 0
+    return scan_exit_code(args.strict_exit_code, [result.decision for result in results])
 
 
 def resolve_databases(args: argparse.Namespace, options: ConnectionOptions) -> list[str]:
     if args.all_databases:
         return list_databases(options, args.maintenance_db)
     return [args.database or args.maintenance_db]
+
+
+def version_check_database(args: argparse.Namespace) -> str:
+    if getattr(args, "all_databases", False):
+        return args.maintenance_db
+    return getattr(args, "database", None) or args.maintenance_db
+
+
+def scan_exit_code(strict: bool, decisions: list[str]) -> int:
+    if not strict:
+        return OK
+    if any("REINDEX" in decision for decision in decisions):
+        return REINDEX_RECOMMENDED
+    if any(decision == "UNKNOWN" for decision in decisions):
+        return UNKNOWN
+    return OK

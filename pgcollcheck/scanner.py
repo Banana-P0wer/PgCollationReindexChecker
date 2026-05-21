@@ -5,6 +5,7 @@ from typing import Any
 from .decision import classify_collation_version, decide_scan_result
 from .discovery import list_index_collation_rows
 from .models import CollationDependency, ScanResult
+from .progress import ProgressReporter
 
 
 def scan_database(
@@ -33,9 +34,12 @@ def scan_databases(
     schema: str | None = None,
     include_system: bool = False,
     largest: int | None = None,
+    progress: ProgressReporter | None = None,
 ) -> list[ScanResult]:
+    progress = progress or ProgressReporter()
     results: list[ScanResult] = []
     for database in databases:
+        progress.database("scanning", database)
         results.extend(
             scan_database(
                 options=options,
