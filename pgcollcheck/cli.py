@@ -215,7 +215,7 @@ def run_plan_reindex(args: argparse.Namespace, options: ConnectionOptions) -> in
     )
     if args.output:
         write_scan_report(results, args.format, args.output)
-    write_reindex_plan(results, args.sql_output)
+    write_reindex_plan(results, args.sql_output, include_database_switches=args.all_databases)
     return scan_exit_code(args.strict_exit_code, [result.decision for result in results])
 
 
