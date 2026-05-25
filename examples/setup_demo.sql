@@ -12,6 +12,12 @@ CREATE COLLATION pgcollcheck_demo.en_us_mismatch (
     version = '0'
 );
 
+CREATE COLLATION pgcollcheck_demo.und_icu_mismatch (
+    provider = icu,
+    locale = 'und',
+    version = '0'
+);
+
 CREATE TABLE pgcollcheck_demo.sample_strings (
     id integer PRIMARY KEY,
     name text NOT NULL,
@@ -30,6 +36,9 @@ VALUES
 
 CREATE INDEX sample_strings_name_mismatch_idx
     ON pgcollcheck_demo.sample_strings (name COLLATE pgcollcheck_demo.en_us_mismatch);
+
+CREATE INDEX sample_strings_name_icu_mismatch_idx
+    ON pgcollcheck_demo.sample_strings (name COLLATE pgcollcheck_demo.und_icu_mismatch);
 
 CREATE INDEX sample_strings_nickname_default_idx
     ON pgcollcheck_demo.sample_strings (nickname);
