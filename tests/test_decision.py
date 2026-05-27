@@ -5,6 +5,7 @@ from pgcollcheck.models import (
     AMCHECK_FAILED,
     AMCHECK_OK,
     AMCHECK_SKIPPED_EXTENSION_MISSING,
+    AMCHECK_SKIPPED_PERMISSION_DENIED,
     SCAN_OK,
     SCAN_OK_UNVERSIONED,
     SCAN_UNKNOWN_NO_ACTUAL_VERSION,
@@ -69,6 +70,11 @@ class DecisionTest(unittest.TestCase):
 
     def test_compare_is_unknown_when_amcheck_is_skipped(self) -> None:
         decision, _ = decide_compare_result(VERDICT_OK, AMCHECK_SKIPPED_EXTENSION_MISSING)
+
+        self.assertEqual(decision, VERDICT_UNKNOWN)
+
+    def test_compare_is_unknown_when_amcheck_permission_is_missing(self) -> None:
+        decision, _ = decide_compare_result(VERDICT_OK, AMCHECK_SKIPPED_PERMISSION_DENIED)
 
         self.assertEqual(decision, VERDICT_UNKNOWN)
 

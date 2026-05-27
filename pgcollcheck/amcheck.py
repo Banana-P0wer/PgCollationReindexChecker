@@ -11,6 +11,7 @@ from .models import (
     AMCHECK_FAILED,
     AMCHECK_OK,
     AMCHECK_SKIPPED_EXTENSION_MISSING,
+    AMCHECK_SKIPPED_PERMISSION_DENIED,
     AMCHECK_TIMEOUT,
     AMCHECK_UNKNOWN_ERROR,
     AmcheckResult,
@@ -20,6 +21,7 @@ from .scanner import build_scan_results
 
 
 LOCK_OR_TIMEOUT_SQLSTATES = {"55P03", "57014"}
+PERMISSION_DENIED_SQLSTATES = {"42501"}
 
 
 @dataclass(frozen=True)
@@ -224,6 +226,8 @@ def classify_amcheck_error(exc: Exception) -> str:
     sqlstate = getattr(exc, "sqlstate", None)
     if sqlstate in LOCK_OR_TIMEOUT_SQLSTATES:
         return AMCHECK_TIMEOUT
+    if sqlstate in PERMISSION_DENIED_SQLSTATES:
+        return AMCHECK_SKIPPED_PERMISSION_DENIED
     return AMCHECK_FAILED if sqlstate else AMCHECK_UNKNOWN_ERROR
 
 
@@ -251,8 +255,9 @@ def sort_amcheck_results(results: list[AmcheckResult]) -> list[AmcheckResult]:
         AMCHECK_FAILED: 0,
         AMCHECK_TIMEOUT: 1,
         AMCHECK_UNKNOWN_ERROR: 2,
-        AMCHECK_SKIPPED_EXTENSION_MISSING: 3,
-        AMCHECK_OK: 4,
+        AMCHECK_SKIPPED_PERMISSION_DENIED: 3,
+        AMCHECK_SKIPPED_EXTENSION_MISSING: 4,
+        AMCHECK_OK: 5,
     }
     return sorted(
         results,

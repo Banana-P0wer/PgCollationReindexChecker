@@ -108,7 +108,7 @@ def format_verify_table(results: list[AmcheckResult]) -> str:
         for result in results
     ]
     text = render_table(table_rows, ["database", "index", "table", "size", "mode", "status", "duration", "error"])
-    failed = [result for result in results if "FAILED" in result.status]
+    failed = [result for result in results if result.status == "AMCHECK_FAILED"]
     skipped = [result for result in results if result.status.startswith("SKIPPED")]
 
     lines = [text, ""]
