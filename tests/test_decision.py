@@ -1,5 +1,6 @@
 import unittest
 
+from pgcollcheck.cli import filter_scan_results
 from pgcollcheck.decision import classify_collation_version, decide_compare_result, decide_scan_result
 from pgcollcheck.models import (
     AMCHECK_FAILED,
@@ -16,6 +17,7 @@ from pgcollcheck.models import (
     VERDICT_REINDEX_BY_BOTH,
     VERDICT_REINDEX_BY_VERSION,
     VERDICT_UNKNOWN,
+    ScanResult,
 )
 
 
@@ -77,6 +79,34 @@ class DecisionTest(unittest.TestCase):
         decision, _ = decide_compare_result(VERDICT_OK, AMCHECK_SKIPPED_PERMISSION_DENIED)
 
         self.assertEqual(decision, VERDICT_UNKNOWN)
+
+    def test_only_mismatches_filters_ok_scan_results(self) -> None:
+        ok = make_scan_result("ok_idx", VERDICT_OK)
+        reindex = make_scan_result("reindex_idx", VERDICT_REINDEX_BY_VERSION)
+        unknown = make_scan_result("unknown_idx", VERDICT_UNKNOWN)
+
+        filtered = filter_scan_results([ok, reindex, unknown], only_mismatches=True)
+
+        self.assertEqual([result.index_name for result in filtered], ["reindex_idx", "unknown_idx"])
+
+
+def make_scan_result(index_name: str, decision: str) -> ScanResult:
+    return ScanResult(
+        database_name="testdb",
+        index_oid=1,
+        index_schema="public",
+        index_name=index_name,
+        table_schema="public",
+        table_name="sample",
+        access_method="btree",
+        index_size_bytes=8192,
+        is_unique=False,
+        is_valid=True,
+        is_ready=True,
+        index_definition="",
+        reindex_sql=f"REINDEX INDEX CONCURRENTLY public.{index_name};",
+        decision=decision,
+    )
 
 
 if __name__ == "__main__":

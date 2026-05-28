@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from pgcollcheck.models import ScanResult
-from pgcollcheck.reports import write_reindex_plan
+from pgcollcheck.reports import format_scan_table, write_reindex_plan
 
 
 def scan_result(database_name: str, index_name: str) -> ScanResult:
@@ -41,6 +41,11 @@ class ReindexPlanTest(unittest.TestCase):
         self.assertIn('\\connect "audit-db"', text)
         self.assertIn("REINDEX INDEX CONCURRENTLY public.users_name_idx;", text)
         self.assertIn("REINDEX INDEX CONCURRENTLY public.events_name_idx;", text)
+
+    def test_only_mismatches_empty_scan_message_is_specific(self) -> None:
+        text = format_scan_table([], only_mismatches=True)
+
+        self.assertIn("No collation version mismatches", text)
 
 
 if __name__ == "__main__":

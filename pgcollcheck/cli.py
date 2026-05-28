@@ -105,6 +105,7 @@ def add_scan_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--include-system", action="store_true", help="Include pg_catalog and other system schemas.")
     parser.add_argument("--largest", type=int, help="Only keep N largest matching indexes per database.")
+    parser.add_argument("--only-mismatches", action="store_true", help="Only show indexes that need REINDEX or have UNKNOWN status.")
     parser.add_argument("--format", choices=("table", "json"), default="table", help="Report format.")
     parser.add_argument("--output", help="Write report to this file.")
     parser.add_argument("--strict-exit-code", action="store_true", help="Return code 2 when REINDEX is recommended.")
@@ -147,7 +148,8 @@ def run_scan(args: argparse.Namespace, options: ConnectionOptions) -> int:
         largest=args.largest,
         progress=ProgressReporter(args.progress),
     )
-    write_scan_report(results, args.format, args.output)
+    results = filter_scan_results(results, args.only_mismatches)
+    write_scan_report(results, args.format, args.output, only_mismatches=args.only_mismatches)
     return scan_exit_code(args.strict_exit_code, [result.decision for result in results])
 
 
@@ -168,7 +170,8 @@ def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
         statement_timeout=args.statement_timeout,
         progress=ProgressReporter(args.progress),
     )
-    write_verify_report(results, args.format, args.output)
+    results = filter_amcheck_results(results, args.only_mismatches)
+    write_verify_report(results, args.format, args.output, only_mismatches=args.only_mismatches)
     if args.strict_exit_code and any(result.status == AMCHECK_FAILED for result in results):
         return REINDEX_RECOMMENDED
     if args.strict_exit_code and any(result.status != "AMCHECK_OK" for result in results):
@@ -193,7 +196,8 @@ def run_compare(args: argparse.Namespace, options: ConnectionOptions) -> int:
         statement_timeout=args.statement_timeout,
         progress=ProgressReporter(args.progress),
     )
-    write_compare_report(results, args.format, args.output)
+    results = filter_compare_results(results, args.only_mismatches)
+    write_compare_report(results, args.format, args.output, only_mismatches=args.only_mismatches)
     if args.strict_exit_code and any(
         result.final_decision in (VERDICT_REINDEX_BY_BOTH, VERDICT_REINDEX_BY_AMCHECK, VERDICT_REINDEX_BY_VERSION)
         for result in results
@@ -213,8 +217,9 @@ def run_plan_reindex(args: argparse.Namespace, options: ConnectionOptions) -> in
         largest=args.largest,
         progress=ProgressReporter(args.progress),
     )
+    results = filter_scan_results(results, args.only_mismatches)
     if args.output:
-        write_scan_report(results, args.format, args.output)
+        write_scan_report(results, args.format, args.output, only_mismatches=args.only_mismatches)
     write_reindex_plan(results, args.sql_output, include_database_switches=args.all_databases)
     return scan_exit_code(args.strict_exit_code, [result.decision for result in results])
 
@@ -239,3 +244,33 @@ def scan_exit_code(strict: bool, decisions: list[str]) -> int:
     if any(decision == "UNKNOWN" for decision in decisions):
         return UNKNOWN
     return OK
+
+
+def filter_scan_results(results, only_mismatches: bool):
+    if not only_mismatches:
+        return results
+    return [
+        result
+        for result in results
+        if "REINDEX" in result.decision or result.decision == "UNKNOWN"
+    ]
+
+
+def filter_amcheck_results(results, only_mismatches: bool):
+    if not only_mismatches:
+        return results
+    return [
+        result
+        for result in results
+        if result.status != "AMCHECK_OK"
+    ]
+
+
+def filter_compare_results(results, only_mismatches: bool):
+    if not only_mismatches:
+        return results
+    return [
+        result
+        for result in results
+        if result.final_decision != "OK"
+    ]

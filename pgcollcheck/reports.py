@@ -25,37 +25,42 @@ def write_scan_report(
     results: list[ScanResult],
     output_format: str,
     output: str | None = None,
+    only_mismatches: bool = False,
 ) -> None:
     if output_format == "json":
         write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
         return
-    write_text(format_scan_table(results), output)
+    write_text(format_scan_table(results, only_mismatches), output)
 
 
 def write_verify_report(
     results: list[AmcheckResult],
     output_format: str,
     output: str | None = None,
+    only_mismatches: bool = False,
 ) -> None:
     if output_format == "json":
         write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
         return
-    write_text(format_verify_table(results), output)
+    write_text(format_verify_table(results, only_mismatches), output)
 
 
 def write_compare_report(
     results: list[CompareResult],
     output_format: str,
     output: str | None = None,
+    only_mismatches: bool = False,
 ) -> None:
     if output_format == "json":
         write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
         return
-    write_text(format_compare_table(results), output)
+    write_text(format_compare_table(results, only_mismatches), output)
 
 
-def format_scan_table(results: list[ScanResult]) -> str:
+def format_scan_table(results: list[ScanResult], only_mismatches: bool = False) -> str:
     if not results:
+        if only_mismatches:
+            return "No collation version mismatches or UNKNOWN states were found.\n"
         return "No B-tree indexes with collatable keys were found.\n"
 
     table_rows: list[dict[str, str]] = []
@@ -90,8 +95,10 @@ def format_scan_table(results: list[ScanResult]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def format_verify_table(results: list[AmcheckResult]) -> str:
+def format_verify_table(results: list[AmcheckResult], only_mismatches: bool = False) -> str:
     if not results:
+        if only_mismatches:
+            return "No amcheck failures, skipped checks, or UNKNOWN states were found.\n"
         return "No B-tree indexes with collatable keys were found.\n"
 
     table_rows = [
@@ -126,8 +133,10 @@ def format_verify_table(results: list[AmcheckResult]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def format_compare_table(results: list[CompareResult]) -> str:
+def format_compare_table(results: list[CompareResult], only_mismatches: bool = False) -> str:
     if not results:
+        if only_mismatches:
+            return "No final REINDEX or UNKNOWN verdicts were produced.\n"
         return "No B-tree indexes with collatable keys were found.\n"
 
     table_rows = [
