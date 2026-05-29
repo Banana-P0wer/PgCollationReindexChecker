@@ -34,10 +34,11 @@ AMCHECK_UNKNOWN_ERROR = "UNKNOWN_ERROR"
 @dataclass
 class CollationDependency:
     database_name: str
-    key_position: int
+    key_position: int | None
     key_name: str
     key_type: str
     opclass_name: str | None
+    dependency_source: str
     collation_oid: int
     collation_schema: str
     collation_name: str

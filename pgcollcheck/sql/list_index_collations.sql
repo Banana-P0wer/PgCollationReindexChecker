@@ -13,6 +13,40 @@ index_keys AS (
         i.indclass[key_pos.n] AS opclass_oid
     FROM pg_index i
     CROSS JOIN LATERAL generate_series(0, i.indnkeyatts - 1) AS key_pos(n)
+),
+collation_dependencies AS (
+    SELECT
+        k.indexrelid,
+        k.indrelid,
+        k.zero_based_position,
+        k.attnum,
+        k.collation_oid,
+        k.opclass_oid,
+        'index_key' AS dependency_source
+    FROM index_keys k
+    WHERE k.collation_oid <> 0
+
+    UNION ALL
+
+    SELECT
+        i.indexrelid,
+        i.indrelid,
+        NULL::integer AS zero_based_position,
+        NULL::smallint AS attnum,
+        d.refobjid AS collation_oid,
+        NULL::oid AS opclass_oid,
+        'pg_depend' AS dependency_source
+    FROM pg_depend d
+    JOIN pg_index i ON i.indexrelid = d.objid
+    WHERE d.classid = 'pg_class'::regclass
+      AND d.refclassid = 'pg_collation'::regclass
+      AND d.deptype IN ('n', 'a')
+      AND NOT EXISTS (
+          SELECT 1
+          FROM index_keys k
+          WHERE k.indexrelid = i.indexrelid
+            AND k.collation_oid = d.refobjid
+      )
 )
 SELECT
     current_database() AS database_name,
@@ -27,9 +61,16 @@ SELECT
     i.indisvalid AS is_valid,
     i.indisready AS is_ready,
     k.zero_based_position + 1 AS key_position,
-    COALESCE(att.attname, '<expression>') AS key_name,
-    COALESCE(att.atttypid::regtype::text, '<expression>') AS key_type,
+    CASE
+        WHEN k.dependency_source = 'pg_depend' THEN '<index dependency>'
+        ELSE COALESCE(att.attname, '<expression>')
+    END AS key_name,
+    CASE
+        WHEN k.dependency_source = 'pg_depend' THEN '<dependency>'
+        ELSE COALESCE(att.atttypid::regtype::text, '<expression>')
+    END AS key_type,
     opc.opcname AS opclass_name,
+    k.dependency_source,
     coll.oid AS collation_oid,
     coll_ns.nspname AS collation_schema,
     coll.collname AS collation_name,
@@ -58,7 +99,7 @@ SELECT
         ELSE
             format('ALTER COLLATION %%I.%%I REFRESH VERSION;', coll_ns.nspname, coll.collname)
     END AS refresh_sql
-FROM index_keys k
+FROM collation_dependencies k
 JOIN pg_index i ON i.indexrelid = k.indexrelid
 JOIN pg_class idx ON idx.oid = i.indexrelid
 JOIN pg_namespace idx_ns ON idx_ns.oid = idx.relnamespace
@@ -70,8 +111,7 @@ LEFT JOIN pg_opclass opc ON opc.oid = k.opclass_oid
 JOIN pg_collation coll ON coll.oid = k.collation_oid
 JOIN pg_namespace coll_ns ON coll_ns.oid = coll.collnamespace
 CROSS JOIN current_db db
-WHERE k.collation_oid <> 0
-  AND am.amname = 'btree'
+WHERE am.amname = 'btree'
   AND idx.relkind = 'i'
   AND idx.relpersistence <> 't'
   AND i.indisvalid
@@ -102,4 +142,5 @@ WHERE k.collation_oid <> 0
 ORDER BY pg_total_relation_size(idx.oid) DESC,
          idx_ns.nspname,
          idx.relname,
-         k.zero_based_position;
+         k.zero_based_position NULLS LAST,
+         k.collation_oid;

@@ -66,6 +66,7 @@ def build_scan_results(rows: list[dict[str, Any]]) -> list[ScanResult]:
             key_name=row["key_name"],
             key_type=row["key_type"],
             opclass_name=row["opclass_name"],
+            dependency_source=row["dependency_source"],
             collation_oid=row["collation_oid"],
             collation_schema=row["collation_schema"],
             collation_name=row["collation_name"],
