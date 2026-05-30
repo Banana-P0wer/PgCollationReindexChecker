@@ -17,7 +17,7 @@ from .models import (
     AmcheckResult,
 )
 from .progress import ProgressReporter
-from .scanner import build_scan_results
+from .scanner import build_scan_results, limit_scan_results
 
 
 LOCK_OR_TIMEOUT_SQLSTATES = {"55P03", "57014"}
@@ -83,9 +83,8 @@ def verify_database(
         provider=provider,
         schema=schema,
         include_system=include_system,
-        largest=largest,
     )
-    candidates = build_scan_results(rows)
+    candidates = limit_scan_results(build_scan_results(rows), largest)
     if not candidates:
         return []
 

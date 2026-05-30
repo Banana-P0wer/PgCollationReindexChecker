@@ -37,15 +37,4 @@ def list_index_collation_rows(
     with options.connect(database) as conn:
         with conn.cursor() as cur:
             cur.execute(read_sql("list_index_collations.sql"), params)
-            rows = list(cur.fetchall())
-    if largest is not None:
-        seen: set[tuple[str, int]] = set()
-        limited: list[dict[str, Any]] = []
-        for row in rows:
-            key = (row["database_name"], row["index_oid"])
-            if key not in seen and len(seen) >= largest:
-                continue
-            seen.add(key)
-            limited.append(row)
-        return limited
-    return rows
+            return list(cur.fetchall())

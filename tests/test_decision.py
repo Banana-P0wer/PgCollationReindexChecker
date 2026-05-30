@@ -19,6 +19,7 @@ from pgcollcheck.models import (
     VERDICT_UNKNOWN,
     ScanResult,
 )
+from pgcollcheck.scanner import limit_scan_results
 
 
 class ImportTest(unittest.TestCase):
@@ -89,17 +90,29 @@ class DecisionTest(unittest.TestCase):
 
         self.assertEqual([result.index_name for result in filtered], ["reindex_idx", "unknown_idx"])
 
+    def test_largest_limit_keeps_all_problematic_results(self) -> None:
+        ok_large = make_scan_result("ok_large_idx", VERDICT_OK, size=4096, oid=1)
+        ok_small = make_scan_result("ok_small_idx", VERDICT_OK, size=1024, oid=2)
+        reindex_small = make_scan_result("reindex_small_idx", VERDICT_REINDEX_BY_VERSION, size=512, oid=3)
 
-def make_scan_result(index_name: str, decision: str) -> ScanResult:
+        limited = limit_scan_results([ok_small, reindex_small, ok_large], largest=1)
+
+        self.assertEqual(
+            [result.index_name for result in limited],
+            ["reindex_small_idx", "ok_large_idx"],
+        )
+
+
+def make_scan_result(index_name: str, decision: str, size: int = 8192, oid: int = 1) -> ScanResult:
     return ScanResult(
         database_name="testdb",
-        index_oid=1,
+        index_oid=oid,
         index_schema="public",
         index_name=index_name,
         table_schema="public",
         table_name="sample",
         access_method="btree",
-        index_size_bytes=8192,
+        index_size_bytes=size,
         is_unique=False,
         is_valid=True,
         is_ready=True,

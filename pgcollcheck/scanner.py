@@ -22,9 +22,8 @@ def scan_database(
         provider=provider,
         schema=schema,
         include_system=include_system,
-        largest=largest,
     )
-    return build_scan_results(rows)
+    return limit_scan_results(build_scan_results(rows), largest)
 
 
 def scan_databases(
@@ -122,3 +121,34 @@ def sort_scan_results(results: list[ScanResult]) -> list[ScanResult]:
             result.index_name,
         ),
     )
+
+
+def limit_scan_results(results: list[ScanResult], largest: int | None) -> list[ScanResult]:
+    if largest is None:
+        return sort_scan_results(results)
+
+    kept: dict[tuple[str, int], ScanResult] = {
+        (result.database_name, result.index_oid): result
+        for result in results
+        if result.decision != "OK"
+    }
+    per_database_counts: dict[str, int] = {}
+    by_size = sorted(
+        results,
+        key=lambda result: (
+            result.database_name,
+            -result.index_size_bytes,
+            result.index_schema,
+            result.index_name,
+        ),
+    )
+    for result in by_size:
+        if result.decision != "OK":
+            continue
+        count = per_database_counts.get(result.database_name, 0)
+        if count >= largest:
+            continue
+        kept[(result.database_name, result.index_oid)] = result
+        per_database_counts[result.database_name] = count + 1
+
+    return sort_scan_results(list(kept.values()))

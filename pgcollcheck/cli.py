@@ -104,7 +104,11 @@ def add_scan_args(parser: argparse.ArgumentParser) -> None:
         help="Limit by effective collation provider.",
     )
     parser.add_argument("--include-system", action="store_true", help="Include pg_catalog and other system schemas.")
-    parser.add_argument("--largest", type=int, help="Only keep N largest matching indexes per database.")
+    parser.add_argument(
+        "--largest",
+        type=positive_int,
+        help="Show N largest safe indexes per database, while always keeping REINDEX and UNKNOWN results.",
+    )
     parser.add_argument("--only-mismatches", action="store_true", help="Only show indexes that need REINDEX or have UNKNOWN status.")
     parser.add_argument("--format", choices=("table", "json"), default="table", help="Report format.")
     parser.add_argument("--output", help="Write report to this file.")
@@ -244,6 +248,13 @@ def scan_exit_code(strict: bool, decisions: list[str]) -> int:
     if any(decision == "UNKNOWN" for decision in decisions):
         return UNKNOWN
     return OK
+
+
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
 
 
 def filter_scan_results(results, only_mismatches: bool):
