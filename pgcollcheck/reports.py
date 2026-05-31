@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
-from .models import AmcheckResult, CompareResult, ScanResult
+from .models import AmcheckResult, CompareResult, DatabaseFailure, ScanResult
 
 
 def human_size(size: int | None) -> str:
@@ -26,11 +26,12 @@ def write_scan_report(
     output_format: str,
     output: str | None = None,
     only_mismatches: bool = False,
+    failures: list[DatabaseFailure] | None = None,
 ) -> None:
     if output_format == "json":
         write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
         return
-    write_text(format_scan_table(results, only_mismatches), output)
+    write_text(format_scan_table(results, only_mismatches, failures), output)
 
 
 def write_verify_report(
@@ -38,11 +39,12 @@ def write_verify_report(
     output_format: str,
     output: str | None = None,
     only_mismatches: bool = False,
+    failures: list[DatabaseFailure] | None = None,
 ) -> None:
     if output_format == "json":
         write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
         return
-    write_text(format_verify_table(results, only_mismatches), output)
+    write_text(format_verify_table(results, only_mismatches, failures), output)
 
 
 def write_compare_report(
@@ -50,18 +52,25 @@ def write_compare_report(
     output_format: str,
     output: str | None = None,
     only_mismatches: bool = False,
+    failures: list[DatabaseFailure] | None = None,
 ) -> None:
     if output_format == "json":
         write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
         return
-    write_text(format_compare_table(results, only_mismatches), output)
+    write_text(format_compare_table(results, only_mismatches, failures), output)
 
 
-def format_scan_table(results: list[ScanResult], only_mismatches: bool = False) -> str:
+def format_scan_table(
+    results: list[ScanResult],
+    only_mismatches: bool = False,
+    failures: list[DatabaseFailure] | None = None,
+) -> str:
+    failures = failures or []
     if not results:
+        failure_text = format_failures(failures)
         if only_mismatches:
-            return "No collation version mismatches or UNKNOWN states were found.\n"
-        return "No B-tree indexes with collatable keys were found.\n"
+            return "No collation version mismatches or UNKNOWN states were found.\n" + failure_text
+        return "No B-tree indexes with collatable keys were found.\n" + failure_text
 
     table_rows: list[dict[str, str]] = []
     for result in results:
@@ -92,14 +101,20 @@ def format_scan_table(results: list[ScanResult], only_mismatches: bool = False) 
         lines.append("Indexes with unknown version state:")
         lines.extend(f"  {result.database_name}: {result.qualified_index}" for result in unknown_results)
 
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n" + format_failures(failures)
 
 
-def format_verify_table(results: list[AmcheckResult], only_mismatches: bool = False) -> str:
+def format_verify_table(
+    results: list[AmcheckResult],
+    only_mismatches: bool = False,
+    failures: list[DatabaseFailure] | None = None,
+) -> str:
+    failures = failures or []
     if not results:
+        failure_text = format_failures(failures)
         if only_mismatches:
-            return "No amcheck failures, skipped checks, or UNKNOWN states were found.\n"
-        return "No B-tree indexes with collatable keys were found.\n"
+            return "No amcheck failures, skipped checks, or UNKNOWN states were found.\n" + failure_text
+        return "No B-tree indexes with collatable keys were found.\n" + failure_text
 
     table_rows = [
         {
@@ -130,14 +145,20 @@ def format_verify_table(results: list[AmcheckResult], only_mismatches: bool = Fa
         lines.append("Skipped checks:")
         lines.extend(f"  {result.database_name}: {result.qualified_index} ({result.status})" for result in skipped)
 
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n" + format_failures(failures)
 
 
-def format_compare_table(results: list[CompareResult], only_mismatches: bool = False) -> str:
+def format_compare_table(
+    results: list[CompareResult],
+    only_mismatches: bool = False,
+    failures: list[DatabaseFailure] | None = None,
+) -> str:
+    failures = failures or []
     if not results:
+        failure_text = format_failures(failures)
         if only_mismatches:
-            return "No final REINDEX or UNKNOWN verdicts were produced.\n"
-        return "No B-tree indexes with collatable keys were found.\n"
+            return "No final REINDEX or UNKNOWN verdicts were produced.\n" + failure_text
+        return "No B-tree indexes with collatable keys were found.\n" + failure_text
 
     table_rows = [
         {
@@ -163,7 +184,21 @@ def format_compare_table(results: list[CompareResult], only_mismatches: bool = F
         lines.extend(f"  {command}" for command in reindex_commands)
     else:
         lines.append("No final REINDEX verdicts were produced.")
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n" + format_failures(failures)
+
+
+def format_failures(failures: list[DatabaseFailure]) -> str:
+    if not failures:
+        return ""
+    rows = [
+        {
+            "database": failure.database_name,
+            "command": failure.command,
+            "error": compact_error(failure.message),
+        }
+        for failure in failures
+    ]
+    return "\nPartial failures:\n" + render_table(rows, ["database", "command", "error"]) + "\n"
 
 
 def format_collations(result: ScanResult) -> str:

@@ -15,6 +15,7 @@ from .models import (
     AMCHECK_TIMEOUT,
     AMCHECK_UNKNOWN_ERROR,
     AmcheckResult,
+    DatabaseFailure,
 )
 from .progress import ProgressReporter
 from .scanner import build_scan_results, limit_scan_results
@@ -44,25 +45,65 @@ def verify_databases(
     statement_timeout: str = "30min",
     progress: ProgressReporter | None = None,
 ) -> list[AmcheckResult]:
+    results, failures = verify_databases_with_failures(
+        options=options,
+        databases=databases,
+        mode=mode,
+        provider=provider,
+        schema=schema,
+        include_system=include_system,
+        largest=largest,
+        install_extension=install_extension,
+        lock_timeout=lock_timeout,
+        statement_timeout=statement_timeout,
+        progress=progress,
+        continue_on_error=False,
+    )
+    if failures:
+        raise RuntimeError(failures[0].message)
+    return results
+
+
+def verify_databases_with_failures(
+    options,
+    databases: list[str],
+    mode: str = "normal",
+    provider: str = "all",
+    schema: str | None = None,
+    include_system: bool = False,
+    largest: int | None = None,
+    install_extension: bool = False,
+    lock_timeout: str = "5s",
+    statement_timeout: str = "30min",
+    progress: ProgressReporter | None = None,
+    continue_on_error: bool = False,
+) -> tuple[list[AmcheckResult], list[DatabaseFailure]]:
     progress = progress or ProgressReporter()
     results: list[AmcheckResult] = []
+    failures: list[DatabaseFailure] = []
     for database in databases:
         progress.database("verifying", database)
-        results.extend(
-            verify_database(
-                options=options,
-                database=database,
-                mode=mode,
-                provider=provider,
-                schema=schema,
-                include_system=include_system,
-                largest=largest,
-                install_extension=install_extension,
-                lock_timeout=lock_timeout,
-                statement_timeout=statement_timeout,
+        try:
+            results.extend(
+                verify_database(
+                    options=options,
+                    database=database,
+                    mode=mode,
+                    provider=provider,
+                    schema=schema,
+                    include_system=include_system,
+                    largest=largest,
+                    install_extension=install_extension,
+                    lock_timeout=lock_timeout,
+                    statement_timeout=statement_timeout,
+                )
             )
-        )
-    return sort_amcheck_results(results)
+        except Exception as exc:
+            if not continue_on_error:
+                raise
+            failures.append(DatabaseFailure.from_exception(database, "verify", exc))
+            progress.write(f"failed verifying database {database}: {exc}")
+    return sort_amcheck_results(results), failures
 
 
 def verify_database(

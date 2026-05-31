@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from .amcheck import verify_databases
+from .amcheck import verify_databases_with_failures
 from .decision import decide_compare_result
-from .models import CompareResult
+from .models import CompareResult, DatabaseFailure
 from .progress import ProgressReporter
-from .scanner import scan_databases
 
 
 def compare_databases(
@@ -20,8 +19,43 @@ def compare_databases(
     statement_timeout: str = "30min",
     progress: ProgressReporter | None = None,
 ) -> list[CompareResult]:
+    results, failures = compare_databases_with_failures(
+        options=options,
+        databases=databases,
+        provider=provider,
+        schema=schema,
+        include_system=include_system,
+        largest=largest,
+        verify_mode=verify_mode,
+        install_extension=install_extension,
+        lock_timeout=lock_timeout,
+        statement_timeout=statement_timeout,
+        progress=progress,
+        continue_on_error=False,
+    )
+    if failures:
+        raise RuntimeError(failures[0].message)
+    return results
+
+
+def compare_databases_with_failures(
+    options,
+    databases: list[str],
+    provider: str = "all",
+    schema: str | None = None,
+    include_system: bool = False,
+    largest: int | None = None,
+    verify_mode: str = "normal",
+    install_extension: bool = False,
+    lock_timeout: str = "5s",
+    statement_timeout: str = "30min",
+    progress: ProgressReporter | None = None,
+    continue_on_error: bool = False,
+) -> tuple[list[CompareResult], list[DatabaseFailure]]:
     progress = progress or ProgressReporter()
-    scan_results = scan_databases(
+    from .scanner import scan_databases_with_failures
+
+    scan_results, scan_failures = scan_databases_with_failures(
         options=options,
         databases=databases,
         provider=provider,
@@ -29,10 +63,15 @@ def compare_databases(
         include_system=include_system,
         largest=largest,
         progress=progress,
+        continue_on_error=continue_on_error,
     )
-    amcheck_results = verify_databases(
+    failed_scan_databases = {failure.database_name for failure in scan_failures}
+    verify_databases_scope = [
+        database for database in databases if database not in failed_scan_databases
+    ]
+    amcheck_results, verify_failures = verify_databases_with_failures(
         options=options,
-        databases=databases,
+        databases=verify_databases_scope,
         mode=verify_mode,
         provider=provider,
         schema=schema,
@@ -42,6 +81,7 @@ def compare_databases(
         lock_timeout=lock_timeout,
         statement_timeout=statement_timeout,
         progress=progress,
+        continue_on_error=continue_on_error,
     )
     amcheck_by_index = {
         (result.database_name, result.index_oid): result
@@ -60,7 +100,7 @@ def compare_databases(
                 reason=reason,
             )
         )
-    return sort_compare_results(combined)
+    return sort_compare_results(combined), [*scan_failures, *verify_failures]
 
 
 def sort_compare_results(results: list[CompareResult]) -> list[CompareResult]:

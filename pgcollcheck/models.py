@@ -184,3 +184,31 @@ class CompareResult:
             "scan": self.scan.to_dict(),
             "amcheck": self.amcheck.to_dict() if self.amcheck else None,
         }
+
+
+@dataclass
+class DatabaseFailure:
+    database_name: str
+    command: str
+    error_type: str
+    message: str
+    sqlstate: str | None = None
+
+    @classmethod
+    def from_exception(cls, database_name: str, command: str, exc: Exception) -> "DatabaseFailure":
+        return cls(
+            database_name=database_name,
+            command=command,
+            error_type=exc.__class__.__name__,
+            message=str(exc).strip(),
+            sqlstate=getattr(exc, "sqlstate", None),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "database_name": self.database_name,
+            "command": self.command,
+            "error_type": self.error_type,
+            "message": self.message,
+            "sqlstate": self.sqlstate,
+        }

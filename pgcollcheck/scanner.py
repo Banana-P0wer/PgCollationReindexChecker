@@ -4,7 +4,7 @@ from typing import Any
 
 from .decision import classify_collation_version, decide_scan_result
 from .discovery import list_index_collation_rows
-from .models import CollationDependency, ScanResult
+from .models import CollationDependency, DatabaseFailure, ScanResult
 from .progress import ProgressReporter
 
 
@@ -35,21 +35,53 @@ def scan_databases(
     largest: int | None = None,
     progress: ProgressReporter | None = None,
 ) -> list[ScanResult]:
+    results, failures = scan_databases_with_failures(
+        options=options,
+        databases=databases,
+        provider=provider,
+        schema=schema,
+        include_system=include_system,
+        largest=largest,
+        progress=progress,
+        continue_on_error=False,
+    )
+    if failures:
+        raise RuntimeError(failures[0].message)
+    return results
+
+
+def scan_databases_with_failures(
+    options,
+    databases: list[str],
+    provider: str = "all",
+    schema: str | None = None,
+    include_system: bool = False,
+    largest: int | None = None,
+    progress: ProgressReporter | None = None,
+    continue_on_error: bool = False,
+) -> tuple[list[ScanResult], list[DatabaseFailure]]:
     progress = progress or ProgressReporter()
     results: list[ScanResult] = []
+    failures: list[DatabaseFailure] = []
     for database in databases:
         progress.database("scanning", database)
-        results.extend(
-            scan_database(
-                options=options,
-                database=database,
-                provider=provider,
-                schema=schema,
-                include_system=include_system,
-                largest=largest,
+        try:
+            results.extend(
+                scan_database(
+                    options=options,
+                    database=database,
+                    provider=provider,
+                    schema=schema,
+                    include_system=include_system,
+                    largest=largest,
+                )
             )
-        )
-    return sort_scan_results(results)
+        except Exception as exc:
+            if not continue_on_error:
+                raise
+            failures.append(DatabaseFailure.from_exception(database, "scan", exc))
+            progress.write(f"failed scanning database {database}: {exc}")
+    return sort_scan_results(results), failures
 
 
 def build_scan_results(rows: list[dict[str, Any]]) -> list[ScanResult]:

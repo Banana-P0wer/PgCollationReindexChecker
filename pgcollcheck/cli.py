@@ -7,7 +7,7 @@ import sys
 from .db import ConnectionOptions
 from .discovery import list_databases
 from .errors import PgCollCheckError
-from .exit_codes import ERROR, OK, REINDEX_RECOMMENDED, UNKNOWN
+from .exit_codes import ERROR, OK, PARTIAL_FAILURE, REINDEX_RECOMMENDED, UNKNOWN
 from .models import (
     AMCHECK_FAILED,
     VERDICT_REINDEX_BY_AMCHECK,
@@ -16,7 +16,7 @@ from .models import (
 )
 from .progress import ProgressReporter
 from .reports import write_compare_report, write_reindex_plan, write_scan_report, write_verify_report
-from .scanner import scan_databases
+from .scanner import scan_databases_with_failures
 from .server import ensure_supported_postgres
 
 
@@ -143,7 +143,7 @@ def add_compare_args(parser: argparse.ArgumentParser) -> None:
 
 def run_scan(args: argparse.Namespace, options: ConnectionOptions) -> int:
     databases = resolve_databases(args, options)
-    results = scan_databases(
+    results, failures = scan_databases_with_failures(
         options=options,
         databases=databases,
         provider=args.provider,
@@ -151,17 +151,18 @@ def run_scan(args: argparse.Namespace, options: ConnectionOptions) -> int:
         include_system=args.include_system,
         largest=args.largest,
         progress=ProgressReporter(args.progress),
+        continue_on_error=args.all_databases,
     )
     results = filter_scan_results(results, args.only_mismatches)
-    write_scan_report(results, args.format, args.output, only_mismatches=args.only_mismatches)
-    return scan_exit_code(args.strict_exit_code, [result.decision for result in results])
+    write_scan_report(results, args.format, args.output, only_mismatches=args.only_mismatches, failures=failures)
+    return command_exit_code(args.strict_exit_code, [result.decision for result in results], failures)
 
 
 def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
-    from .amcheck import verify_databases
+    from .amcheck import verify_databases_with_failures
 
     databases = resolve_databases(args, options)
-    results = verify_databases(
+    results, failures = verify_databases_with_failures(
         options=options,
         databases=databases,
         mode=args.mode,
@@ -173,9 +174,12 @@ def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
         lock_timeout=args.lock_timeout,
         statement_timeout=args.statement_timeout,
         progress=ProgressReporter(args.progress),
+        continue_on_error=args.all_databases,
     )
     results = filter_amcheck_results(results, args.only_mismatches)
-    write_verify_report(results, args.format, args.output, only_mismatches=args.only_mismatches)
+    write_verify_report(results, args.format, args.output, only_mismatches=args.only_mismatches, failures=failures)
+    if failures:
+        return PARTIAL_FAILURE
     if args.strict_exit_code and any(result.status == AMCHECK_FAILED for result in results):
         return REINDEX_RECOMMENDED
     if args.strict_exit_code and any(result.status != "AMCHECK_OK" for result in results):
@@ -184,10 +188,10 @@ def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
 
 
 def run_compare(args: argparse.Namespace, options: ConnectionOptions) -> int:
-    from .compare import compare_databases
+    from .compare import compare_databases_with_failures
 
     databases = resolve_databases(args, options)
-    results = compare_databases(
+    results, failures = compare_databases_with_failures(
         options=options,
         databases=databases,
         provider=args.provider,
@@ -199,9 +203,12 @@ def run_compare(args: argparse.Namespace, options: ConnectionOptions) -> int:
         lock_timeout=args.lock_timeout,
         statement_timeout=args.statement_timeout,
         progress=ProgressReporter(args.progress),
+        continue_on_error=args.all_databases,
     )
     results = filter_compare_results(results, args.only_mismatches)
-    write_compare_report(results, args.format, args.output, only_mismatches=args.only_mismatches)
+    write_compare_report(results, args.format, args.output, only_mismatches=args.only_mismatches, failures=failures)
+    if failures:
+        return PARTIAL_FAILURE
     if args.strict_exit_code and any(
         result.final_decision in (VERDICT_REINDEX_BY_BOTH, VERDICT_REINDEX_BY_AMCHECK, VERDICT_REINDEX_BY_VERSION)
         for result in results
@@ -212,7 +219,7 @@ def run_compare(args: argparse.Namespace, options: ConnectionOptions) -> int:
 
 def run_plan_reindex(args: argparse.Namespace, options: ConnectionOptions) -> int:
     databases = resolve_databases(args, options)
-    results = scan_databases(
+    results, failures = scan_databases_with_failures(
         options=options,
         databases=databases,
         provider=args.provider,
@@ -220,12 +227,13 @@ def run_plan_reindex(args: argparse.Namespace, options: ConnectionOptions) -> in
         include_system=args.include_system,
         largest=args.largest,
         progress=ProgressReporter(args.progress),
+        continue_on_error=args.all_databases,
     )
     results = filter_scan_results(results, args.only_mismatches)
     if args.output:
-        write_scan_report(results, args.format, args.output, only_mismatches=args.only_mismatches)
+        write_scan_report(results, args.format, args.output, only_mismatches=args.only_mismatches, failures=failures)
     write_reindex_plan(results, args.sql_output, include_database_switches=args.all_databases)
-    return scan_exit_code(args.strict_exit_code, [result.decision for result in results])
+    return command_exit_code(args.strict_exit_code, [result.decision for result in results], failures)
 
 
 def resolve_databases(args: argparse.Namespace, options: ConnectionOptions) -> list[str]:
@@ -248,6 +256,12 @@ def scan_exit_code(strict: bool, decisions: list[str]) -> int:
     if any(decision == "UNKNOWN" for decision in decisions):
         return UNKNOWN
     return OK
+
+
+def command_exit_code(strict: bool, decisions: list[str], failures: list | None = None) -> int:
+    if failures:
+        return PARTIAL_FAILURE
+    return scan_exit_code(strict, decisions)
 
 
 def positive_int(value: str) -> int:
