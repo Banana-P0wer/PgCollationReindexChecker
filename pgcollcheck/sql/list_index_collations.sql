@@ -58,7 +58,7 @@ eligible_indexes AS (
     JOIN pg_class tbl ON tbl.oid = i.indrelid
     JOIN pg_namespace tbl_ns ON tbl_ns.oid = tbl.relnamespace
     JOIN pg_am am ON am.oid = idx.relam
-    WHERE am.amname = 'btree'
+    WHERE (%(access_method)s::text = 'all' OR am.amname = %(access_method)s::text)
       AND idx.relkind = 'i'
       AND idx.relpersistence <> 't'
       AND i.indisvalid

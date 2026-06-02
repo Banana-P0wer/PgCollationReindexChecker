@@ -61,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     scan = subparsers.add_parser("scan", parents=[connection_parent()], help="compare stored and actual collation versions")
-    add_scan_args(scan)
+    add_scan_args(scan, include_access_method=True)
 
     verify = subparsers.add_parser("verify", parents=[connection_parent()], help="run amcheck for B-tree indexes with collatable keys")
     add_verify_args(verify)
@@ -70,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_compare_args(compare)
 
     plan = subparsers.add_parser("plan-reindex", parents=[connection_parent()], help="generate SQL commands for indexes that need REINDEX")
-    add_scan_args(plan)
+    add_scan_args(plan, include_access_method=True)
     plan.add_argument("--sql-output", help="Write generated SQL to this file.")
 
     return parser
@@ -92,7 +92,7 @@ def connection_parent() -> argparse.ArgumentParser:
     return parser
 
 
-def add_scan_args(parser: argparse.ArgumentParser) -> None:
+def add_scan_args(parser: argparse.ArgumentParser, include_access_method: bool = False) -> None:
     target = parser.add_mutually_exclusive_group()
     target.add_argument("--database", help="Scan one database. Defaults to --maintenance-db.")
     target.add_argument("--all-databases", action="store_true", help="Scan every non-template database.")
@@ -103,6 +103,13 @@ def add_scan_args(parser: argparse.ArgumentParser) -> None:
         default="all",
         help="Limit by effective collation provider.",
     )
+    if include_access_method:
+        parser.add_argument(
+            "--access-method",
+            choices=("btree", "all"),
+            default="btree",
+            help="Limit catalog scan by index access method. Default: btree.",
+        )
     parser.add_argument("--include-system", action="store_true", help="Include pg_catalog and other system schemas.")
     parser.add_argument(
         "--largest",
@@ -147,6 +154,7 @@ def run_scan(args: argparse.Namespace, options: ConnectionOptions) -> int:
         options=options,
         databases=databases,
         provider=args.provider,
+        access_method=args.access_method,
         schema=args.schema,
         include_system=args.include_system,
         largest=args.largest,
@@ -167,6 +175,7 @@ def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
         databases=databases,
         mode=args.mode,
         provider=args.provider,
+        access_method=args.access_method,
         schema=args.schema,
         include_system=args.include_system,
         largest=args.largest,
