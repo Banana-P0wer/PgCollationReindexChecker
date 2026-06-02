@@ -156,8 +156,13 @@ SELECT
     END AS key_name,
     CASE
         WHEN k.dependency_source = 'pg_depend' THEN '<dependency>'
-        ELSE COALESCE(att.atttypid::regtype::text, '<expression>')
+        ELSE COALESCE(att.atttypid::regtype::text, idx_att.atttypid::regtype::text, '<expression>')
     END AS key_type,
+    CASE
+        WHEN k.dependency_source = 'pg_depend' AND i.indpred IS NOT NULL THEN pg_get_expr(i.indpred, i.indrelid, true)
+        WHEN k.dependency_source = 'pg_depend' THEN pg_get_indexdef(k.indexrelid)
+        ELSE pg_get_indexdef(k.indexrelid, (k.zero_based_position + 1)::integer, true)
+    END AS key_expression,
     opc.opcname AS opclass_name,
     k.dependency_source,
     cv.collation_oid,
@@ -174,7 +179,9 @@ SELECT
 FROM collation_dependencies k
 JOIN eligible_indexes e ON e.indexrelid = k.indexrelid
 JOIN index_metadata im ON im.index_oid = k.indexrelid
+JOIN pg_index i ON i.indexrelid = k.indexrelid
 LEFT JOIN pg_attribute att ON att.attrelid = k.indrelid AND att.attnum = k.attnum
+LEFT JOIN pg_attribute idx_att ON idx_att.attrelid = k.indexrelid AND idx_att.attnum = k.zero_based_position + 1
 LEFT JOIN pg_opclass opc ON opc.oid = k.opclass_oid
 JOIN collation_versions cv ON cv.collation_oid = k.collation_oid
 WHERE (

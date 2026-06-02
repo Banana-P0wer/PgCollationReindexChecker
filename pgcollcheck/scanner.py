@@ -102,6 +102,7 @@ def build_scan_results(rows: list[dict[str, Any]]) -> list[ScanResult]:
             key_position=row["key_position"],
             key_name=row["key_name"],
             key_type=row["key_type"],
+            key_expression=row["key_expression"],
             opclass_name=row["opclass_name"],
             dependency_source=row["dependency_source"],
             collation_oid=row["collation_oid"],

@@ -204,6 +204,9 @@ def format_failures(failures: list[DatabaseFailure]) -> str:
 def format_collations(result: ScanResult) -> str:
     parts: list[str] = []
     for dependency in result.dependencies:
+        key_label = dependency.key_name
+        if dependency.key_name in ("<expression>", "<index dependency>"):
+            key_label = dependency.key_expression
         name = dependency.qualified_collation
         provider = dependency.provider_name
         status = dependency.status
@@ -211,7 +214,7 @@ def format_collations(result: ScanResult) -> str:
             version = "unversioned"
         else:
             version = f"{dependency.stored_version or '?'}->{dependency.actual_version or '?'}"
-        parts.append(f"{dependency.key_name}:{name}/{provider}/{version}/{status}")
+        parts.append(f"{key_label}:{name}/{provider}/{version}/{status}")
     return "; ".join(parts)
 
 

@@ -37,6 +37,7 @@ class CollationDependency:
     key_position: int | None
     key_name: str
     key_type: str
+    key_expression: str
     opclass_name: str | None
     dependency_source: str
     collation_oid: int
