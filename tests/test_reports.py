@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from pgcollcheck.models import AMCHECK_OK, AmcheckResult, ScanResult, quote_qualified_name
@@ -58,6 +59,25 @@ class ReindexPlanTest(unittest.TestCase):
 
         self.assertIn("Cost note", text)
         self.assertIn("amcheck reads index pages", text)
+
+    def test_json_scan_report_uses_envelope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "scan.json"
+            from pgcollcheck.reports import write_scan_report
+
+            write_scan_report(
+                [scan_result("appdb", "users_name_idx")],
+                "json",
+                str(output),
+                scope={"databases": ["appdb"]},
+            )
+            payload = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["tool"]["name"], "pgcollcheck")
+        self.assertEqual(payload["command"], "scan")
+        self.assertEqual(payload["scope"]["databases"], ["appdb"])
+        self.assertEqual(payload["summary"]["result_count"], 1)
+        self.assertEqual(payload["results"][0]["index_name"], "users_name_idx")
 
 def amcheck_result(index_name: str) -> AmcheckResult:
     return AmcheckResult(

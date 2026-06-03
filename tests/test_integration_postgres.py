@@ -108,11 +108,14 @@ class PostgresIntegrationTest(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 2, completed.stderr)
         report = json.loads(completed.stdout)
-        self.assertEqual(len(report), 1)
-        self.assertEqual(report[0]["decision"], "REINDEX_RECOMMENDED_BY_COLLATION_VERSION")
-        self.assertEqual(report[0]["index_name"], "sample_strings_name_icu_mismatch_idx")
-        self.assertEqual(report[0]["dependencies"][0]["provider_name"], "icu")
-        self.assertEqual(report[0]["dependencies"][0]["status"], "VERSION_MISMATCH")
+        results = report["results"]
+        self.assertEqual(report["command"], "scan")
+        self.assertEqual(report["summary"]["reindex_count"], 1)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["decision"], "REINDEX_RECOMMENDED_BY_COLLATION_VERSION")
+        self.assertEqual(results[0]["index_name"], "sample_strings_name_icu_mismatch_idx")
+        self.assertEqual(results[0]["dependencies"][0]["provider_name"], "icu")
+        self.assertEqual(results[0]["dependencies"][0]["status"], "VERSION_MISMATCH")
 
 
 if __name__ == "__main__":

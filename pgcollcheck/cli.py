@@ -162,7 +162,14 @@ def run_scan(args: argparse.Namespace, options: ConnectionOptions) -> int:
         continue_on_error=args.all_databases,
     )
     results = filter_scan_results(results, args.only_mismatches)
-    write_scan_report(results, args.format, args.output, only_mismatches=args.only_mismatches, failures=failures)
+    write_scan_report(
+        results,
+        args.format,
+        args.output,
+        only_mismatches=args.only_mismatches,
+        failures=failures,
+        scope=report_scope(args, databases),
+    )
     return command_exit_code(args.strict_exit_code, [result.decision for result in results], failures)
 
 
@@ -186,7 +193,14 @@ def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
         continue_on_error=args.all_databases,
     )
     results = filter_amcheck_results(results, args.only_mismatches)
-    write_verify_report(results, args.format, args.output, only_mismatches=args.only_mismatches, failures=failures)
+    write_verify_report(
+        results,
+        args.format,
+        args.output,
+        only_mismatches=args.only_mismatches,
+        failures=failures,
+        scope=report_scope(args, databases),
+    )
     if failures:
         return PARTIAL_FAILURE
     if args.strict_exit_code and any(result.status == AMCHECK_FAILED for result in results):
@@ -215,7 +229,14 @@ def run_compare(args: argparse.Namespace, options: ConnectionOptions) -> int:
         continue_on_error=args.all_databases,
     )
     results = filter_compare_results(results, args.only_mismatches)
-    write_compare_report(results, args.format, args.output, only_mismatches=args.only_mismatches, failures=failures)
+    write_compare_report(
+        results,
+        args.format,
+        args.output,
+        only_mismatches=args.only_mismatches,
+        failures=failures,
+        scope=report_scope(args, databases),
+    )
     if failures:
         return PARTIAL_FAILURE
     if args.strict_exit_code and any(
@@ -240,7 +261,14 @@ def run_plan_reindex(args: argparse.Namespace, options: ConnectionOptions) -> in
     )
     results = filter_scan_results(results, args.only_mismatches)
     if args.output:
-        write_scan_report(results, args.format, args.output, only_mismatches=args.only_mismatches, failures=failures)
+        write_scan_report(
+            results,
+            args.format,
+            args.output,
+            only_mismatches=args.only_mismatches,
+            failures=failures,
+            scope=report_scope(args, databases),
+        )
     write_reindex_plan(results, args.sql_output, include_database_switches=args.all_databases)
     return command_exit_code(args.strict_exit_code, [result.decision for result in results], failures)
 
@@ -271,6 +299,22 @@ def command_exit_code(strict: bool, decisions: list[str], failures: list | None 
     if failures:
         return PARTIAL_FAILURE
     return scan_exit_code(strict, decisions)
+
+
+def report_scope(args: argparse.Namespace, databases: list[str]) -> dict[str, object]:
+    scope: dict[str, object] = {
+        "databases": databases,
+        "schema": getattr(args, "schema", None),
+        "provider": getattr(args, "provider", None),
+        "include_system": getattr(args, "include_system", False),
+        "largest": getattr(args, "largest", None),
+        "only_mismatches": getattr(args, "only_mismatches", False),
+        "all_databases": getattr(args, "all_databases", False),
+    }
+    for name in ("access_method", "mode", "verify_mode"):
+        if hasattr(args, name):
+            scope[name] = getattr(args, name)
+    return scope
 
 
 def positive_int(value: str) -> int:

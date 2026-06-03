@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from . import __version__
 from .models import AmcheckResult, CompareResult, DatabaseFailure, ScanResult
 
 
@@ -27,9 +29,27 @@ def write_scan_report(
     output: str | None = None,
     only_mismatches: bool = False,
     failures: list[DatabaseFailure] | None = None,
+    scope: dict[str, Any] | None = None,
 ) -> None:
+    failures = failures or []
     if output_format == "json":
-        write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
+        write_text(
+            json.dumps(
+                build_json_report(
+                    command="scan",
+                    results=[result.to_dict() for result in results],
+                    failures=failures,
+                    scope=scope,
+                    summary={
+                        "reindex_count": sum(1 for result in results if "REINDEX" in result.decision),
+                        "unknown_count": sum(1 for result in results if result.decision == "UNKNOWN"),
+                    },
+                ),
+                ensure_ascii=False,
+                indent=2,
+            ),
+            output,
+        )
         return
     write_text(format_scan_table(results, only_mismatches, failures), output)
 
@@ -40,9 +60,27 @@ def write_verify_report(
     output: str | None = None,
     only_mismatches: bool = False,
     failures: list[DatabaseFailure] | None = None,
+    scope: dict[str, Any] | None = None,
 ) -> None:
+    failures = failures or []
     if output_format == "json":
-        write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
+        write_text(
+            json.dumps(
+                build_json_report(
+                    command="verify",
+                    results=[result.to_dict() for result in results],
+                    failures=failures,
+                    scope=scope,
+                    summary={
+                        "amcheck_failed_count": sum(1 for result in results if result.status == "AMCHECK_FAILED"),
+                        "amcheck_skipped_count": sum(1 for result in results if result.status.startswith("SKIPPED")),
+                    },
+                ),
+                ensure_ascii=False,
+                indent=2,
+            ),
+            output,
+        )
         return
     write_text(format_verify_table(results, only_mismatches, failures), output)
 
@@ -53,11 +91,56 @@ def write_compare_report(
     output: str | None = None,
     only_mismatches: bool = False,
     failures: list[DatabaseFailure] | None = None,
+    scope: dict[str, Any] | None = None,
 ) -> None:
+    failures = failures or []
     if output_format == "json":
-        write_text(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2), output)
+        write_text(
+            json.dumps(
+                build_json_report(
+                    command="compare",
+                    results=[result.to_dict() for result in results],
+                    failures=failures,
+                    scope=scope,
+                    summary={
+                        "reindex_count": sum(1 for result in results if "REINDEX" in result.final_decision),
+                        "unknown_count": sum(1 for result in results if result.final_decision == "UNKNOWN"),
+                    },
+                ),
+                ensure_ascii=False,
+                indent=2,
+            ),
+            output,
+        )
         return
     write_text(format_compare_table(results, only_mismatches, failures), output)
+
+
+def build_json_report(
+    command: str,
+    results: list[dict[str, Any]],
+    failures: list[DatabaseFailure],
+    scope: dict[str, Any] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    summary = summary or {}
+    return {
+        "tool": {
+            "name": "pgcollcheck",
+            "version": __version__,
+        },
+        "command": command,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "scope": scope or {},
+        "summary": {
+            "result_count": len(results),
+            "failure_count": len(failures),
+            "partial_failure": bool(failures),
+            **summary,
+        },
+        "results": results,
+        "failures": [failure.to_dict() for failure in failures],
+    }
 
 
 def format_scan_table(
