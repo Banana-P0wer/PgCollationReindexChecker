@@ -77,8 +77,8 @@ def format_scan_table(
         table_rows.append(
             {
                 "database": result.database_name,
-                "index": result.qualified_index,
-                "table": result.qualified_table,
+                "index": result.quoted_qualified_index,
+                "table": result.quoted_qualified_table,
                 "size": human_size(result.index_size_bytes),
                 "collations": format_collations(result),
                 "decision": result.decision,
@@ -119,8 +119,8 @@ def format_verify_table(
     table_rows = [
         {
             "database": result.database_name,
-            "index": result.qualified_index,
-            "table": result.qualified_table,
+            "index": result.quoted_qualified_index,
+            "table": result.quoted_qualified_table,
             "size": human_size(result.index_size_bytes),
             "mode": result.mode,
             "status": result.status,
@@ -163,7 +163,7 @@ def format_compare_table(
     table_rows = [
         {
             "database": result.scan.database_name,
-            "index": result.scan.qualified_index,
+            "index": result.scan.quoted_qualified_index,
             "catalog": result.scan.decision,
             "amcheck": result.amcheck.status if result.amcheck else "",
             "final": result.final_decision,
@@ -207,7 +207,7 @@ def format_collations(result: ScanResult) -> str:
         key_label = dependency.key_name
         if dependency.key_name in ("<expression>", "<index dependency>"):
             key_label = dependency.key_expression
-        name = dependency.qualified_collation
+        name = dependency.quoted_qualified_collation
         provider = dependency.provider_name
         status = dependency.status
         if dependency.stored_version is None and dependency.actual_version is None:

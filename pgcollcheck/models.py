@@ -11,6 +11,14 @@ PROVIDER_NAMES = {
     "i": "icu",
 }
 
+
+def quote_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def quote_qualified_name(schema: str, name: str) -> str:
+    return f"{quote_identifier(schema)}.{quote_identifier(name)}"
+
 SCAN_OK = "OK"
 SCAN_OK_UNVERSIONED = "OK_UNVERSIONED"
 SCAN_VERSION_MISMATCH = "VERSION_MISMATCH"
@@ -59,10 +67,15 @@ class CollationDependency:
     def qualified_collation(self) -> str:
         return f"{self.collation_schema}.{self.collation_name}"
 
+    @property
+    def quoted_qualified_collation(self) -> str:
+        return quote_qualified_name(self.collation_schema, self.collation_name)
+
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["provider_name"] = self.provider_name
         data["qualified_collation"] = self.qualified_collation
+        data["quoted_qualified_collation"] = self.quoted_qualified_collation
         return data
 
 
@@ -89,8 +102,16 @@ class ScanResult:
         return f"{self.index_schema}.{self.index_name}"
 
     @property
+    def quoted_qualified_index(self) -> str:
+        return quote_qualified_name(self.index_schema, self.index_name)
+
+    @property
     def qualified_table(self) -> str:
         return f"{self.table_schema}.{self.table_name}"
+
+    @property
+    def quoted_qualified_table(self) -> str:
+        return quote_qualified_name(self.table_schema, self.table_name)
 
     @property
     def refresh_sql(self) -> list[str]:
@@ -109,9 +130,11 @@ class ScanResult:
             "index_schema": self.index_schema,
             "index_name": self.index_name,
             "qualified_index": self.qualified_index,
+            "quoted_qualified_index": self.quoted_qualified_index,
             "table_schema": self.table_schema,
             "table_name": self.table_name,
             "qualified_table": self.qualified_table,
+            "quoted_qualified_table": self.quoted_qualified_table,
             "access_method": self.access_method,
             "index_size_bytes": self.index_size_bytes,
             "is_unique": self.is_unique,
@@ -147,8 +170,16 @@ class AmcheckResult:
         return f"{self.index_schema}.{self.index_name}"
 
     @property
+    def quoted_qualified_index(self) -> str:
+        return quote_qualified_name(self.index_schema, self.index_name)
+
+    @property
     def qualified_table(self) -> str:
         return f"{self.table_schema}.{self.table_name}"
+
+    @property
+    def quoted_qualified_table(self) -> str:
+        return quote_qualified_name(self.table_schema, self.table_name)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -157,9 +188,11 @@ class AmcheckResult:
             "index_schema": self.index_schema,
             "index_name": self.index_name,
             "qualified_index": self.qualified_index,
+            "quoted_qualified_index": self.quoted_qualified_index,
             "table_schema": self.table_schema,
             "table_name": self.table_name,
             "qualified_table": self.qualified_table,
+            "quoted_qualified_table": self.quoted_qualified_table,
             "index_size_bytes": self.index_size_bytes,
             "mode": self.mode,
             "status": self.status,

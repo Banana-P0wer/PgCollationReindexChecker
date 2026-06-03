@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pgcollcheck.models import ScanResult
+from pgcollcheck.models import ScanResult, quote_qualified_name
 from pgcollcheck.reports import format_scan_table, write_reindex_plan
 
 
@@ -26,6 +26,12 @@ def scan_result(database_name: str, index_name: str) -> ScanResult:
 
 
 class ReindexPlanTest(unittest.TestCase):
+    def test_quote_qualified_name_escapes_identifier_parts(self) -> None:
+        self.assertEqual(
+            quote_qualified_name('Odd Schema', 'idx"name'),
+            '"Odd Schema"."idx""name"',
+        )
+
     def test_plan_reindex_can_group_commands_by_database(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "reindex.sql"
