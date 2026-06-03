@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pgcollcheck.models import ScanResult, quote_qualified_name
-from pgcollcheck.reports import format_scan_table, write_reindex_plan
+from pgcollcheck.models import AMCHECK_OK, AmcheckResult, ScanResult, quote_qualified_name
+from pgcollcheck.reports import format_scan_table, format_verify_table, write_reindex_plan
 
 
 def scan_result(database_name: str, index_name: str) -> ScanResult:
@@ -52,6 +52,28 @@ class ReindexPlanTest(unittest.TestCase):
         text = format_scan_table([], only_mismatches=True)
 
         self.assertIn("No collation version mismatches", text)
+
+    def test_verify_report_explains_amcheck_cost(self) -> None:
+        text = format_verify_table([amcheck_result("users_name_idx")])
+
+        self.assertIn("Cost note", text)
+        self.assertIn("amcheck reads index pages", text)
+
+def amcheck_result(index_name: str) -> AmcheckResult:
+    return AmcheckResult(
+        database_name="appdb",
+        index_oid=1,
+        index_schema="public",
+        index_name=index_name,
+        table_schema="public",
+        table_name="users",
+        index_size_bytes=8192,
+        mode="normal",
+        status=AMCHECK_OK,
+        duration_ms=1,
+        reindex_sql=f"REINDEX INDEX CONCURRENTLY public.{index_name};",
+        index_definition="",
+    )
 
 
 if __name__ == "__main__":

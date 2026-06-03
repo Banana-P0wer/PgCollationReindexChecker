@@ -134,6 +134,8 @@ def format_verify_table(
     skipped = [result for result in results if result.status.startswith("SKIPPED")]
 
     lines = [text, ""]
+    lines.append(cost_note("amcheck", len(results)))
+    lines.append("")
     if failed:
         lines.append("Indexes that should be rebuilt after amcheck failure:")
         lines.extend(f"  {result.reindex_sql}" for result in failed)
@@ -179,6 +181,9 @@ def format_compare_table(
     ]
 
     lines = [text, ""]
+    amcheck_count = sum(1 for result in results if result.amcheck is not None)
+    lines.append(cost_note("compare", amcheck_count))
+    lines.append("")
     if reindex_commands:
         lines.append("REINDEX commands:")
         lines.extend(f"  {command}" for command in reindex_commands)
@@ -199,6 +204,13 @@ def format_failures(failures: list[DatabaseFailure]) -> str:
         for failure in failures
     ]
     return "\nPartial failures:\n" + render_table(rows, ["database", "command", "error"]) + "\n"
+
+
+def cost_note(command: str, index_count: int) -> str:
+    return (
+        f"Cost note: {command} ran amcheck for {index_count} index(es); "
+        "amcheck reads index pages and can wait for PostgreSQL locks."
+    )
 
 
 def format_collations(result: ScanResult) -> str:
