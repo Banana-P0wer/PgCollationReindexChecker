@@ -83,9 +83,10 @@ def scan_databases_with_failures(
                 )
             )
         except Exception as exc:
+            failure = DatabaseFailure.from_exception(database, "scan", exc)
             if not continue_on_error:
-                raise
-            failures.append(DatabaseFailure.from_exception(database, "scan", exc))
+                raise failure.to_error() from exc
+            failures.append(failure)
             progress.write(f"failed scanning database {database}: {exc}")
     return sort_scan_results(results), failures
 

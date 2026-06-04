@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from .errors import DatabaseOperationError
+
 
 PROVIDER_NAMES = {
     "b": "builtin",
@@ -230,12 +232,29 @@ class DatabaseFailure:
 
     @classmethod
     def from_exception(cls, database_name: str, command: str, exc: Exception) -> "DatabaseFailure":
+        if isinstance(exc, DatabaseOperationError):
+            return cls(
+                database_name=exc.database_name,
+                command=exc.command,
+                error_type=exc.error_type,
+                message=exc.message,
+                sqlstate=exc.sqlstate,
+            )
         return cls(
             database_name=database_name,
             command=command,
             error_type=exc.__class__.__name__,
             message=str(exc).strip(),
             sqlstate=getattr(exc, "sqlstate", None),
+        )
+
+    def to_error(self) -> DatabaseOperationError:
+        return DatabaseOperationError(
+            database_name=self.database_name,
+            command=self.command,
+            error_type=self.error_type,
+            message=self.message,
+            sqlstate=self.sqlstate,
         )
 
     def to_dict(self) -> dict[str, Any]:

@@ -99,9 +99,10 @@ def verify_databases_with_failures(
                 )
             )
         except Exception as exc:
+            failure = DatabaseFailure.from_exception(database, "verify", exc)
             if not continue_on_error:
-                raise
-            failures.append(DatabaseFailure.from_exception(database, "verify", exc))
+                raise failure.to_error() from exc
+            failures.append(failure)
             progress.write(f"failed verifying database {database}: {exc}")
     return sort_amcheck_results(results), failures
 
