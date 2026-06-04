@@ -56,14 +56,19 @@ class PostgresIntegrationTest(unittest.TestCase):
                 f"""
                 CREATE TABLE "{cls.schema_name}".sample_strings (
                     id integer PRIMARY KEY,
-                    name text NOT NULL
+                    name text NOT NULL,
+                    nickname text NOT NULL
                 )
                 """
             )
             cur.execute(
                 f"""
-                INSERT INTO "{cls.schema_name}".sample_strings (id, name)
-                VALUES (1, 'Ёлка'), (2, 'Ель'), (3, 'ångström'), (4, 'apple')
+                INSERT INTO "{cls.schema_name}".sample_strings (id, name, nickname)
+                VALUES
+                    (1, 'Ёлка', 'elka'),
+                    (2, 'Ель', 'yel'),
+                    (3, 'ångström', 'angstrom'),
+                    (4, 'apple', 'apple')
                 """
             )
             cur.execute(
@@ -73,13 +78,26 @@ class PostgresIntegrationTest(unittest.TestCase):
                 (name COLLATE "{cls.schema_name}".und_icu_mismatch)
                 """
             )
+            cur.execute(
+                f"""
+                CREATE INDEX sample_strings_id_partial_icu_mismatch_idx
+                ON "{cls.schema_name}".sample_strings (id)
+                WHERE name COLLATE "{cls.schema_name}".und_icu_mismatch > 'm'
+                """
+            )
+            cur.execute(
+                f"""
+                CREATE INDEX sample_strings_nickname_default_idx
+                ON "{cls.schema_name}".sample_strings (nickname)
+                """
+            )
 
     @classmethod
     def _drop_schema(cls) -> None:
         with cls.conn.cursor() as cur:
             cur.execute(f'DROP SCHEMA IF EXISTS "{cls.schema_name}" CASCADE')
 
-    def test_scan_provider_icu_reports_version_mismatch(self) -> None:
+    def test_scan_provider_icu_reports_key_and_partial_version_mismatches(self) -> None:
         project_root = Path(__file__).resolve().parents[1]
         command = [
             sys.executable,
@@ -110,12 +128,56 @@ class PostgresIntegrationTest(unittest.TestCase):
         report = json.loads(completed.stdout)
         results = report["results"]
         self.assertEqual(report["command"], "scan")
-        self.assertEqual(report["summary"]["reindex_count"], 1)
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["decision"], "REINDEX_RECOMMENDED_BY_COLLATION_VERSION")
-        self.assertEqual(results[0]["index_name"], "sample_strings_name_icu_mismatch_idx")
-        self.assertEqual(results[0]["dependencies"][0]["provider_name"], "icu")
-        self.assertEqual(results[0]["dependencies"][0]["status"], "VERSION_MISMATCH")
+        self.assertEqual(report["summary"]["reindex_count"], 2)
+        self.assertEqual(len(results), 2)
+        by_name = {result["index_name"]: result for result in results}
+        self.assertEqual(
+            by_name["sample_strings_name_icu_mismatch_idx"]["decision"],
+            "REINDEX_RECOMMENDED_BY_COLLATION_VERSION",
+        )
+        self.assertEqual(
+            by_name["sample_strings_id_partial_icu_mismatch_idx"]["dependencies"][0]["dependency_source"],
+            "pg_depend",
+        )
+        self.assertIn(
+            "name COLLATE",
+            by_name["sample_strings_id_partial_icu_mismatch_idx"]["dependencies"][0]["key_expression"],
+        )
+        for result in results:
+            self.assertEqual(result["dependencies"][0]["provider_name"], "icu")
+            self.assertEqual(result["dependencies"][0]["status"], "VERSION_MISMATCH")
+
+    def test_scan_reports_default_collation_index(self) -> None:
+        project_root = Path(__file__).resolve().parents[1]
+        command = [
+            sys.executable,
+            "-m",
+            "pgcollcheck",
+            "scan",
+            "--database",
+            self.database,
+            "--schema",
+            self.schema_name,
+            "--format",
+            "json",
+        ]
+
+        completed = subprocess.run(
+            command,
+            cwd=project_root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        report = json.loads(completed.stdout)
+        by_name = {result["index_name"]: result for result in report["results"]}
+        default_index = by_name["sample_strings_nickname_default_idx"]
+        self.assertEqual(default_index["decision"], "OK")
+        self.assertEqual(default_index["dependencies"][0]["collation_name"], "default")
+        self.assertEqual(default_index["dependencies"][0]["version_source"], "pg_database.datcollversion")
 
 
 if __name__ == "__main__":
