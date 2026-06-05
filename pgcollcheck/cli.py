@@ -182,7 +182,6 @@ def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
         databases=databases,
         mode=args.mode,
         provider=args.provider,
-        access_method=args.access_method,
         schema=args.schema,
         include_system=args.include_system,
         largest=args.largest,
