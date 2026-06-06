@@ -290,6 +290,11 @@ def format_failures(failures: list[DatabaseFailure]) -> str:
 
 
 def cost_note(command: str, index_count: int) -> str:
+    if command == "amcheck":
+        return (
+            f"Cost note: amcheck checked {index_count} index(es); "
+            "amcheck reads index pages and can wait for PostgreSQL locks."
+        )
     return (
         f"Cost note: {command} ran amcheck for {index_count} index(es); "
         "amcheck reads index pages and can wait for PostgreSQL locks."
