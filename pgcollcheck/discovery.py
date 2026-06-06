@@ -32,7 +32,6 @@ def list_index_collation_rows(
     access_method: str = "btree",
     schema: str | None = None,
     include_system: bool = False,
-    largest: int | None = None,
 ) -> list[dict[str, Any]]:
     provider_code = PROVIDER_FILTERS[provider]
     access_method_name = ACCESS_METHOD_FILTERS[access_method]

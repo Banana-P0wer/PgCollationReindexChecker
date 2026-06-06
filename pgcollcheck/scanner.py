@@ -28,32 +28,6 @@ def scan_database(
     return limit_scan_results(build_scan_results(rows), largest)
 
 
-def scan_databases(
-    options,
-    databases: list[str],
-    provider: str = "all",
-    access_method: str = "btree",
-    schema: str | None = None,
-    include_system: bool = False,
-    largest: int | None = None,
-    progress: ProgressReporter | None = None,
-) -> list[ScanResult]:
-    results, failures = scan_databases_with_failures(
-        options=options,
-        databases=databases,
-        provider=provider,
-        access_method=access_method,
-        schema=schema,
-        include_system=include_system,
-        largest=largest,
-        progress=progress,
-        continue_on_error=False,
-    )
-    if failures:
-        raise RuntimeError(failures[0].message)
-    return results
-
-
 def scan_databases_with_failures(
     options,
     databases: list[str],

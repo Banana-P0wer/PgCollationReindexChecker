@@ -6,38 +6,6 @@ from .models import CompareResult, DatabaseFailure
 from .progress import ProgressReporter
 
 
-def compare_databases(
-    options,
-    databases: list[str],
-    provider: str = "all",
-    schema: str | None = None,
-    include_system: bool = False,
-    largest: int | None = None,
-    verify_mode: str = "normal",
-    install_extension: bool = False,
-    lock_timeout: str = "5s",
-    statement_timeout: str = "30min",
-    progress: ProgressReporter | None = None,
-) -> list[CompareResult]:
-    results, failures = compare_databases_with_failures(
-        options=options,
-        databases=databases,
-        provider=provider,
-        schema=schema,
-        include_system=include_system,
-        largest=largest,
-        verify_mode=verify_mode,
-        install_extension=install_extension,
-        lock_timeout=lock_timeout,
-        statement_timeout=statement_timeout,
-        progress=progress,
-        continue_on_error=False,
-    )
-    if failures:
-        raise RuntimeError(failures[0].message)
-    return results
-
-
 def compare_databases_with_failures(
     options,
     databases: list[str],

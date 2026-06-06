@@ -188,9 +188,6 @@ WHERE (
       %(provider)s::text = 'all'
       OR cv.effective_provider = %(provider)s::text
   )
-  AND (
-      e.indexrelid IS NOT NULL
-  )
 ORDER BY im.index_size_bytes DESC,
          im.index_schema,
          im.index_name,
