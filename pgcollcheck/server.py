@@ -12,11 +12,11 @@ MIN_SUPPORTED_SERVER_VERSION_LABEL = "15"
 
 @dataclass(frozen=True)
 class ServerInfo:
-    version_num: int
+    versionNum: int
     version: str
 
 
-def load_server_info(options: ConnectionOptions, database: str) -> ServerInfo:
+def loadServerInfo(options: ConnectionOptions, database: str) -> ServerInfo:
     with options.connect(database) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -27,12 +27,12 @@ def load_server_info(options: ConnectionOptions, database: str) -> ServerInfo:
                 """
             )
             row = cur.fetchone()
-            return ServerInfo(version_num=row["version_num"], version=row["version"])
+            return ServerInfo(versionNum=row["version_num"], version=row["version"])
 
 
-def ensure_supported_postgres(options: ConnectionOptions, database: str) -> ServerInfo:
-    info = load_server_info(options, database)
-    if info.version_num < MIN_SUPPORTED_SERVER_VERSION_NUM:
+def ensureSupportedPostgres(options: ConnectionOptions, database: str) -> ServerInfo:
+    info = loadServerInfo(options, database)
+    if info.versionNum < MIN_SUPPORTED_SERVER_VERSION_NUM:
         raise UnsupportedPostgresError(
             "unsupported PostgreSQL version "
             f"{info.version}; supported PostgreSQL >= {MIN_SUPPORTED_SERVER_VERSION_LABEL}"

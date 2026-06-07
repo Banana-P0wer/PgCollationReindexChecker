@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any
 
 from .errors import DatabaseOperationError
@@ -14,12 +14,12 @@ PROVIDER_NAMES = {
 }
 
 
-def quote_identifier(value: str) -> str:
+def quoteIdentifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
-def quote_qualified_name(schema: str, name: str) -> str:
-    return f"{quote_identifier(schema)}.{quote_identifier(name)}"
+def quoteQualifiedName(schema: str, name: str) -> str:
+    return f"{quoteIdentifier(schema)}.{quoteIdentifier(name)}"
 
 SCAN_OK = "OK"
 SCAN_OK_UNVERSIONED = "OK_UNVERSIONED"
@@ -43,166 +43,183 @@ AMCHECK_UNKNOWN_ERROR = "UNKNOWN_ERROR"
 
 @dataclass
 class CollationDependency:
-    database_name: str
-    key_position: int | None
-    key_name: str
-    key_type: str
-    key_expression: str
-    opclass_name: str | None
-    dependency_source: str
-    collation_oid: int
-    collation_schema: str
-    collation_name: str
-    collation_provider: str
-    effective_provider: str
-    stored_version: str | None
-    actual_version: str | None
-    version_source: str
+    databaseName: str
+    keyPosition: int | None
+    keyName: str
+    keyType: str
+    keyExpression: str
+    opclassName: str | None
+    dependencySource: str
+    collationOid: int
+    collationSchema: str
+    collationName: str
+    collationProvider: str
+    effectiveProvider: str
+    storedVersion: str | None
+    actualVersion: str | None
+    versionSource: str
     status: str
-    refresh_sql: str
+    refreshSql: str
 
     @property
-    def provider_name(self) -> str:
-        return PROVIDER_NAMES.get(self.effective_provider, self.effective_provider)
+    def providerName(self) -> str:
+        return PROVIDER_NAMES.get(self.effectiveProvider, self.effectiveProvider)
 
     @property
-    def qualified_collation(self) -> str:
-        return f"{self.collation_schema}.{self.collation_name}"
+    def qualifiedCollation(self) -> str:
+        return f"{self.collationSchema}.{self.collationName}"
 
     @property
-    def quoted_qualified_collation(self) -> str:
-        return quote_qualified_name(self.collation_schema, self.collation_name)
+    def quotedQualifiedCollation(self) -> str:
+        return quoteQualifiedName(self.collationSchema, self.collationName)
 
-    def to_dict(self) -> dict[str, Any]:
-        data = asdict(self)
-        data["provider_name"] = self.provider_name
-        data["qualified_collation"] = self.qualified_collation
-        data["quoted_qualified_collation"] = self.quoted_qualified_collation
-        return data
+    def toDict(self) -> dict[str, Any]:
+        return {
+            "database_name": self.databaseName,
+            "key_position": self.keyPosition,
+            "key_name": self.keyName,
+            "key_type": self.keyType,
+            "key_expression": self.keyExpression,
+            "opclass_name": self.opclassName,
+            "dependency_source": self.dependencySource,
+            "collation_oid": self.collationOid,
+            "collation_schema": self.collationSchema,
+            "collation_name": self.collationName,
+            "collation_provider": self.collationProvider,
+            "effective_provider": self.effectiveProvider,
+            "stored_version": self.storedVersion,
+            "actual_version": self.actualVersion,
+            "version_source": self.versionSource,
+            "status": self.status,
+            "refresh_sql": self.refreshSql,
+            "provider_name": self.providerName,
+            "qualified_collation": self.qualifiedCollation,
+            "quoted_qualified_collation": self.quotedQualifiedCollation,
+        }
 
 
 @dataclass
 class ScanResult:
-    database_name: str
-    index_oid: int
-    index_schema: str
-    index_name: str
-    table_schema: str
-    table_name: str
-    access_method: str
-    index_size_bytes: int
-    is_unique: bool
-    is_valid: bool
-    is_ready: bool
-    index_definition: str
-    reindex_sql: str
+    databaseName: str
+    indexOid: int
+    indexSchema: str
+    indexName: str
+    tableSchema: str
+    tableName: str
+    accessMethod: str
+    indexSizeBytes: int
+    isUnique: bool
+    isValid: bool
+    isReady: bool
+    indexDefinition: str
+    reindexSql: str
     decision: str
     dependencies: list[CollationDependency] = field(default_factory=list)
 
     @property
-    def qualified_index(self) -> str:
-        return f"{self.index_schema}.{self.index_name}"
+    def qualifiedIndex(self) -> str:
+        return f"{self.indexSchema}.{self.indexName}"
 
     @property
-    def quoted_qualified_index(self) -> str:
-        return quote_qualified_name(self.index_schema, self.index_name)
+    def quotedQualifiedIndex(self) -> str:
+        return quoteQualifiedName(self.indexSchema, self.indexName)
 
     @property
-    def qualified_table(self) -> str:
-        return f"{self.table_schema}.{self.table_name}"
+    def qualifiedTable(self) -> str:
+        return f"{self.tableSchema}.{self.tableName}"
 
     @property
-    def quoted_qualified_table(self) -> str:
-        return quote_qualified_name(self.table_schema, self.table_name)
+    def quotedQualifiedTable(self) -> str:
+        return quoteQualifiedName(self.tableSchema, self.tableName)
 
     @property
-    def refresh_sql(self) -> list[str]:
+    def refreshSql(self) -> list[str]:
         seen: set[str] = set()
         commands: list[str] = []
         for dependency in self.dependencies:
-            if dependency.refresh_sql not in seen:
-                seen.add(dependency.refresh_sql)
-                commands.append(dependency.refresh_sql)
+            if dependency.refreshSql not in seen:
+                seen.add(dependency.refreshSql)
+                commands.append(dependency.refreshSql)
         return commands
 
-    def to_dict(self) -> dict[str, Any]:
+    def toDict(self) -> dict[str, Any]:
         return {
-            "database_name": self.database_name,
-            "index_oid": self.index_oid,
-            "index_schema": self.index_schema,
-            "index_name": self.index_name,
-            "qualified_index": self.qualified_index,
-            "quoted_qualified_index": self.quoted_qualified_index,
-            "table_schema": self.table_schema,
-            "table_name": self.table_name,
-            "qualified_table": self.qualified_table,
-            "quoted_qualified_table": self.quoted_qualified_table,
-            "access_method": self.access_method,
-            "index_size_bytes": self.index_size_bytes,
-            "is_unique": self.is_unique,
-            "is_valid": self.is_valid,
-            "is_ready": self.is_ready,
-            "index_definition": self.index_definition,
-            "reindex_sql": self.reindex_sql,
-            "refresh_sql": self.refresh_sql,
+            "database_name": self.databaseName,
+            "index_oid": self.indexOid,
+            "index_schema": self.indexSchema,
+            "index_name": self.indexName,
+            "qualified_index": self.qualifiedIndex,
+            "quoted_qualified_index": self.quotedQualifiedIndex,
+            "table_schema": self.tableSchema,
+            "table_name": self.tableName,
+            "qualified_table": self.qualifiedTable,
+            "quoted_qualified_table": self.quotedQualifiedTable,
+            "access_method": self.accessMethod,
+            "index_size_bytes": self.indexSizeBytes,
+            "is_unique": self.isUnique,
+            "is_valid": self.isValid,
+            "is_ready": self.isReady,
+            "index_definition": self.indexDefinition,
+            "reindex_sql": self.reindexSql,
+            "refresh_sql": self.refreshSql,
             "decision": self.decision,
-            "dependencies": [dependency.to_dict() for dependency in self.dependencies],
+            "dependencies": [dependency.toDict() for dependency in self.dependencies],
         }
 
 
 @dataclass
 class AmcheckResult:
-    database_name: str
-    index_oid: int
-    index_schema: str
-    index_name: str
-    table_schema: str
-    table_name: str
-    index_size_bytes: int
+    databaseName: str
+    indexOid: int
+    indexSchema: str
+    indexName: str
+    tableSchema: str
+    tableName: str
+    indexSizeBytes: int
     mode: str
     status: str
-    duration_ms: int | None
-    reindex_sql: str
-    index_definition: str
-    error_sqlstate: str | None = None
-    error_message: str | None = None
+    durationMs: int | None
+    reindexSql: str
+    indexDefinition: str
+    errorSqlstate: str | None = None
+    errorMessage: str | None = None
 
     @property
-    def qualified_index(self) -> str:
-        return f"{self.index_schema}.{self.index_name}"
+    def qualifiedIndex(self) -> str:
+        return f"{self.indexSchema}.{self.indexName}"
 
     @property
-    def quoted_qualified_index(self) -> str:
-        return quote_qualified_name(self.index_schema, self.index_name)
+    def quotedQualifiedIndex(self) -> str:
+        return quoteQualifiedName(self.indexSchema, self.indexName)
 
     @property
-    def qualified_table(self) -> str:
-        return f"{self.table_schema}.{self.table_name}"
+    def qualifiedTable(self) -> str:
+        return f"{self.tableSchema}.{self.tableName}"
 
     @property
-    def quoted_qualified_table(self) -> str:
-        return quote_qualified_name(self.table_schema, self.table_name)
+    def quotedQualifiedTable(self) -> str:
+        return quoteQualifiedName(self.tableSchema, self.tableName)
 
-    def to_dict(self) -> dict[str, Any]:
+    def toDict(self) -> dict[str, Any]:
         return {
-            "database_name": self.database_name,
-            "index_oid": self.index_oid,
-            "index_schema": self.index_schema,
-            "index_name": self.index_name,
-            "qualified_index": self.qualified_index,
-            "quoted_qualified_index": self.quoted_qualified_index,
-            "table_schema": self.table_schema,
-            "table_name": self.table_name,
-            "qualified_table": self.qualified_table,
-            "quoted_qualified_table": self.quoted_qualified_table,
-            "index_size_bytes": self.index_size_bytes,
+            "database_name": self.databaseName,
+            "index_oid": self.indexOid,
+            "index_schema": self.indexSchema,
+            "index_name": self.indexName,
+            "qualified_index": self.qualifiedIndex,
+            "quoted_qualified_index": self.quotedQualifiedIndex,
+            "table_schema": self.tableSchema,
+            "table_name": self.tableName,
+            "qualified_table": self.qualifiedTable,
+            "quoted_qualified_table": self.quotedQualifiedTable,
+            "index_size_bytes": self.indexSizeBytes,
             "mode": self.mode,
             "status": self.status,
-            "duration_ms": self.duration_ms,
-            "error_sqlstate": self.error_sqlstate,
-            "error_message": self.error_message,
-            "reindex_sql": self.reindex_sql,
-            "index_definition": self.index_definition,
+            "duration_ms": self.durationMs,
+            "error_sqlstate": self.errorSqlstate,
+            "error_message": self.errorMessage,
+            "reindex_sql": self.reindexSql,
+            "index_definition": self.indexDefinition,
         }
 
 
@@ -210,58 +227,58 @@ class AmcheckResult:
 class CompareResult:
     scan: ScanResult
     amcheck: AmcheckResult | None
-    final_decision: str
+    finalDecision: str
     reason: str
 
-    def to_dict(self) -> dict[str, Any]:
+    def toDict(self) -> dict[str, Any]:
         return {
-            "final_decision": self.final_decision,
+            "final_decision": self.finalDecision,
             "reason": self.reason,
-            "scan": self.scan.to_dict(),
-            "amcheck": self.amcheck.to_dict() if self.amcheck else None,
+            "scan": self.scan.toDict(),
+            "amcheck": self.amcheck.toDict() if self.amcheck else None,
         }
 
 
 @dataclass
 class DatabaseFailure:
-    database_name: str
+    databaseName: str
     command: str
-    error_type: str
+    errorType: str
     message: str
     sqlstate: str | None = None
 
     @classmethod
-    def from_exception(cls, database_name: str, command: str, exc: Exception) -> "DatabaseFailure":
+    def fromException(cls, databaseName: str, command: str, exc: Exception) -> "DatabaseFailure":
         if isinstance(exc, DatabaseOperationError):
             return cls(
-                database_name=exc.database_name,
+                databaseName=exc.databaseName,
                 command=exc.command,
-                error_type=exc.error_type,
+                errorType=exc.errorType,
                 message=exc.message,
                 sqlstate=exc.sqlstate,
             )
         return cls(
-            database_name=database_name,
+            databaseName=databaseName,
             command=command,
-            error_type=exc.__class__.__name__,
+            errorType=exc.__class__.__name__,
             message=str(exc).strip(),
             sqlstate=getattr(exc, "sqlstate", None),
         )
 
-    def to_error(self) -> DatabaseOperationError:
+    def toError(self) -> DatabaseOperationError:
         return DatabaseOperationError(
-            database_name=self.database_name,
+            databaseName=self.databaseName,
             command=self.command,
-            error_type=self.error_type,
+            errorType=self.errorType,
             message=self.message,
             sqlstate=self.sqlstate,
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def toDict(self) -> dict[str, Any]:
         return {
-            "database_name": self.database_name,
+            "database_name": self.databaseName,
             "command": self.command,
-            "error_type": self.error_type,
+            "error_type": self.errorType,
             "message": self.message,
             "sqlstate": self.sqlstate,
         }

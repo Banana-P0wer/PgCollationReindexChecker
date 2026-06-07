@@ -5,7 +5,7 @@ import os
 import sys
 
 from .db import ConnectionOptions
-from .discovery import list_databases
+from .discovery import listDatabases
 from .errors import PgCollCheckError
 from .exit_codes import ERROR, OK, PARTIAL_FAILURE, REINDEX_RECOMMENDED, UNKNOWN
 from .models import (
@@ -15,13 +15,13 @@ from .models import (
     VERDICT_REINDEX_BY_VERSION,
 )
 from .progress import ProgressReporter
-from .reports import write_compare_report, write_reindex_plan, write_scan_report, write_verify_report
-from .scanner import scan_databases_with_failures
-from .server import ensure_supported_postgres
+from .reports import writeCompareReport, writeReindexPlan, writeScanReport, writeVerifyReport
+from .scanner import scanDatabasesWithFailures
+from .server import ensureSupportedPostgres
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
+    parser = buildParser()
     args = parser.parse_args(argv)
     options = ConnectionOptions(
         dsn=args.dsn,
@@ -33,15 +33,15 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command:
-            ensure_supported_postgres(options, version_check_database(args))
+            ensureSupportedPostgres(options, versionCheckDatabase(args))
         if args.command == "scan":
-            return run_scan(args, options)
+            return runScan(args, options)
         if args.command == "verify":
-            return run_verify(args, options)
+            return runVerify(args, options)
         if args.command == "compare":
-            return run_compare(args, options)
+            return runCompare(args, options)
         if args.command == "plan-reindex":
-            return run_plan_reindex(args, options)
+            return runPlanReindex(args, options)
     except PgCollCheckError as exc:
         print(f"pgcollcheck: {exc}", file=sys.stderr)
         return ERROR
@@ -53,30 +53,30 @@ def main(argv: list[str] | None = None) -> int:
     return ERROR
 
 
-def build_parser() -> argparse.ArgumentParser:
+def buildParser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pgcollcheck",
         description="Check PostgreSQL collation versions used by string indexes.",
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    scan = subparsers.add_parser("scan", parents=[connection_parent()], help="compare stored and actual collation versions")
-    add_scan_args(scan, include_access_method=True)
+    scan = subparsers.add_parser("scan", parents=[connectionParent()], help="compare stored and actual collation versions")
+    addScanArgs(scan, includeAccessMethod=True)
 
-    verify = subparsers.add_parser("verify", parents=[connection_parent()], help="run amcheck for B-tree indexes with collatable keys")
-    add_verify_args(verify)
+    verify = subparsers.add_parser("verify", parents=[connectionParent()], help="run amcheck for B-tree indexes with collatable keys")
+    addVerifyArgs(verify)
 
-    compare = subparsers.add_parser("compare", parents=[connection_parent()], help="combine catalog scan and amcheck verification")
-    add_compare_args(compare)
+    compare = subparsers.add_parser("compare", parents=[connectionParent()], help="combine catalog scan and amcheck verification")
+    addCompareArgs(compare)
 
-    plan = subparsers.add_parser("plan-reindex", parents=[connection_parent()], help="generate SQL commands for indexes that need REINDEX")
-    add_scan_args(plan, include_access_method=True)
+    plan = subparsers.add_parser("plan-reindex", parents=[connectionParent()], help="generate SQL commands for indexes that need REINDEX")
+    addScanArgs(plan, includeAccessMethod=True)
     plan.add_argument("--sql-output", help="Write generated SQL to this file.")
 
     return parser
 
 
-def connection_parent() -> argparse.ArgumentParser:
+def connectionParent() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--dsn", default=os.environ.get("DATABASE_URL"), help="PostgreSQL DSN.")
     parser.add_argument("--host", help="Database host.")
@@ -85,6 +85,7 @@ def connection_parent() -> argparse.ArgumentParser:
     parser.add_argument("--password", help="Database password.")
     parser.add_argument(
         "--maintenance-db",
+        dest="maintenanceDb",
         default=os.environ.get("PGDATABASE") or "postgres",
         help="Database used to discover all databases. Default: postgres.",
     )
@@ -92,10 +93,10 @@ def connection_parent() -> argparse.ArgumentParser:
     return parser
 
 
-def add_scan_args(parser: argparse.ArgumentParser, include_access_method: bool = False) -> None:
+def addScanArgs(parser: argparse.ArgumentParser, includeAccessMethod: bool = False) -> None:
     target = parser.add_mutually_exclusive_group()
     target.add_argument("--database", help="Scan one database. Defaults to --maintenance-db.")
-    target.add_argument("--all-databases", action="store_true", help="Scan every non-template database.")
+    target.add_argument("--all-databases", dest="allDatabases", action="store_true", help="Scan every non-template database.")
     parser.add_argument("--schema", help="Limit scan to one schema.")
     parser.add_argument(
         "--provider",
@@ -103,188 +104,190 @@ def add_scan_args(parser: argparse.ArgumentParser, include_access_method: bool =
         default="all",
         help="Limit by effective collation provider.",
     )
-    if include_access_method:
+    if includeAccessMethod:
         parser.add_argument(
             "--access-method",
+            dest="accessMethod",
             choices=("btree", "all"),
             default="btree",
             help="Limit catalog scan by index access method. Default: btree.",
         )
-    parser.add_argument("--include-system", action="store_true", help="Include pg_catalog and other system schemas.")
+    parser.add_argument("--include-system", dest="includeSystem", action="store_true", help="Include pg_catalog and other system schemas.")
     parser.add_argument(
         "--largest",
-        type=positive_int,
+        type=positiveInt,
         help="Show N largest safe indexes per database, while always keeping REINDEX and UNKNOWN results.",
     )
-    parser.add_argument("--only-mismatches", action="store_true", help="Only show indexes that need REINDEX or have UNKNOWN status.")
+    parser.add_argument("--only-mismatches", dest="onlyMismatches", action="store_true", help="Only show indexes that need REINDEX or have UNKNOWN status.")
     parser.add_argument("--format", choices=("table", "json"), default="table", help="Report format.")
     parser.add_argument("--output", help="Write report to this file.")
-    parser.add_argument("--strict-exit-code", action="store_true", help="Return code 2 when REINDEX is recommended.")
+    parser.add_argument("--strict-exit-code", dest="strictExitCode", action="store_true", help="Return code 2 when REINDEX is recommended.")
 
 
-def add_verify_args(parser: argparse.ArgumentParser) -> None:
-    add_scan_args(parser)
+def addVerifyArgs(parser: argparse.ArgumentParser) -> None:
+    addScanArgs(parser)
     parser.add_argument(
         "--mode",
         choices=("quick", "normal", "deep"),
         default="normal",
         help="amcheck mode. quick skips heapallindexed, deep uses bt_index_parent_check.",
     )
-    parser.add_argument("--install-extension", action="store_true", help="Create amcheck if it is missing.")
-    parser.add_argument("--lock-timeout", default="5s", help="PostgreSQL lock_timeout for amcheck.")
-    parser.add_argument("--statement-timeout", default="30min", help="PostgreSQL statement_timeout for amcheck.")
+    parser.add_argument("--install-extension", dest="installExtension", action="store_true", help="Create amcheck if it is missing.")
+    parser.add_argument("--lock-timeout", dest="lockTimeout", default="5s", help="PostgreSQL lock_timeout for amcheck.")
+    parser.add_argument("--statement-timeout", dest="statementTimeout", default="30min", help="PostgreSQL statement_timeout for amcheck.")
 
 
-def add_compare_args(parser: argparse.ArgumentParser) -> None:
-    add_scan_args(parser)
+def addCompareArgs(parser: argparse.ArgumentParser) -> None:
+    addScanArgs(parser)
     parser.add_argument(
         "--verify-mode",
+        dest="verifyMode",
         choices=("quick", "normal", "deep"),
         default="normal",
         help="amcheck mode used by compare.",
     )
-    parser.add_argument("--install-extension", action="store_true", help="Create amcheck if it is missing.")
-    parser.add_argument("--lock-timeout", default="5s", help="PostgreSQL lock_timeout for amcheck.")
-    parser.add_argument("--statement-timeout", default="30min", help="PostgreSQL statement_timeout for amcheck.")
+    parser.add_argument("--install-extension", dest="installExtension", action="store_true", help="Create amcheck if it is missing.")
+    parser.add_argument("--lock-timeout", dest="lockTimeout", default="5s", help="PostgreSQL lock_timeout for amcheck.")
+    parser.add_argument("--statement-timeout", dest="statementTimeout", default="30min", help="PostgreSQL statement_timeout for amcheck.")
 
 
-def run_scan(args: argparse.Namespace, options: ConnectionOptions) -> int:
-    databases = resolve_databases(args, options)
-    results, failures = scan_databases_with_failures(
+def runScan(args: argparse.Namespace, options: ConnectionOptions) -> int:
+    databases = resolveDatabases(args, options)
+    results, failures = scanDatabasesWithFailures(
         options=options,
         databases=databases,
         provider=args.provider,
-        access_method=args.access_method,
+        accessMethod=args.accessMethod,
         schema=args.schema,
-        include_system=args.include_system,
+        includeSystem=args.includeSystem,
         largest=args.largest,
         progress=ProgressReporter(args.progress),
-        continue_on_error=args.all_databases,
+        continueOnError=args.allDatabases,
     )
-    results = filter_scan_results(results, args.only_mismatches)
-    write_scan_report(
+    results = filterScanResults(results, args.onlyMismatches)
+    writeScanReport(
         results,
         args.format,
         args.output,
-        only_mismatches=args.only_mismatches,
+        onlyMismatches=args.onlyMismatches,
         failures=failures,
-        scope=report_scope(args, databases),
+        scope=reportScope(args, databases),
     )
-    return command_exit_code(args.strict_exit_code, [result.decision for result in results], failures)
+    return commandExitCode(args.strictExitCode, [result.decision for result in results], failures)
 
 
-def run_verify(args: argparse.Namespace, options: ConnectionOptions) -> int:
-    from .amcheck import verify_databases_with_failures
+def runVerify(args: argparse.Namespace, options: ConnectionOptions) -> int:
+    from .amcheck import verifyDatabasesWithFailures
 
-    databases = resolve_databases(args, options)
-    results, failures = verify_databases_with_failures(
+    databases = resolveDatabases(args, options)
+    results, failures = verifyDatabasesWithFailures(
         options=options,
         databases=databases,
         mode=args.mode,
         provider=args.provider,
         schema=args.schema,
-        include_system=args.include_system,
+        includeSystem=args.includeSystem,
         largest=args.largest,
-        install_extension=args.install_extension,
-        lock_timeout=args.lock_timeout,
-        statement_timeout=args.statement_timeout,
+        installExtension=args.installExtension,
+        lockTimeout=args.lockTimeout,
+        statementTimeout=args.statementTimeout,
         progress=ProgressReporter(args.progress),
-        continue_on_error=args.all_databases,
+        continueOnError=args.allDatabases,
     )
-    results = filter_amcheck_results(results, args.only_mismatches)
-    write_verify_report(
+    results = filterAmcheckResults(results, args.onlyMismatches)
+    writeVerifyReport(
         results,
         args.format,
         args.output,
-        only_mismatches=args.only_mismatches,
+        onlyMismatches=args.onlyMismatches,
         failures=failures,
-        scope=report_scope(args, databases),
+        scope=reportScope(args, databases),
     )
     if failures:
         return PARTIAL_FAILURE
-    if args.strict_exit_code and any(result.status == AMCHECK_FAILED for result in results):
+    if args.strictExitCode and any(result.status == AMCHECK_FAILED for result in results):
         return REINDEX_RECOMMENDED
-    if args.strict_exit_code and any(result.status != "AMCHECK_OK" for result in results):
+    if args.strictExitCode and any(result.status != "AMCHECK_OK" for result in results):
         return UNKNOWN
     return OK
 
 
-def run_compare(args: argparse.Namespace, options: ConnectionOptions) -> int:
-    from .compare import compare_databases_with_failures
+def runCompare(args: argparse.Namespace, options: ConnectionOptions) -> int:
+    from .compare import compareDatabasesWithFailures
 
-    databases = resolve_databases(args, options)
-    results, failures = compare_databases_with_failures(
+    databases = resolveDatabases(args, options)
+    results, failures = compareDatabasesWithFailures(
         options=options,
         databases=databases,
         provider=args.provider,
         schema=args.schema,
-        include_system=args.include_system,
+        includeSystem=args.includeSystem,
         largest=args.largest,
-        verify_mode=args.verify_mode,
-        install_extension=args.install_extension,
-        lock_timeout=args.lock_timeout,
-        statement_timeout=args.statement_timeout,
+        verifyMode=args.verifyMode,
+        installExtension=args.installExtension,
+        lockTimeout=args.lockTimeout,
+        statementTimeout=args.statementTimeout,
         progress=ProgressReporter(args.progress),
-        continue_on_error=args.all_databases,
+        continueOnError=args.allDatabases,
     )
-    results = filter_compare_results(results, args.only_mismatches)
-    write_compare_report(
+    results = filterCompareResults(results, args.onlyMismatches)
+    writeCompareReport(
         results,
         args.format,
         args.output,
-        only_mismatches=args.only_mismatches,
+        onlyMismatches=args.onlyMismatches,
         failures=failures,
-        scope=report_scope(args, databases),
+        scope=reportScope(args, databases),
     )
     if failures:
         return PARTIAL_FAILURE
-    if args.strict_exit_code and any(
-        result.final_decision in (VERDICT_REINDEX_BY_BOTH, VERDICT_REINDEX_BY_AMCHECK, VERDICT_REINDEX_BY_VERSION)
+    if args.strictExitCode and any(
+        result.finalDecision in (VERDICT_REINDEX_BY_BOTH, VERDICT_REINDEX_BY_AMCHECK, VERDICT_REINDEX_BY_VERSION)
         for result in results
     ):
         return REINDEX_RECOMMENDED
-    return scan_exit_code(args.strict_exit_code, [result.final_decision for result in results])
+    return scanExitCode(args.strictExitCode, [result.finalDecision for result in results])
 
 
-def run_plan_reindex(args: argparse.Namespace, options: ConnectionOptions) -> int:
-    databases = resolve_databases(args, options)
-    results, failures = scan_databases_with_failures(
+def runPlanReindex(args: argparse.Namespace, options: ConnectionOptions) -> int:
+    databases = resolveDatabases(args, options)
+    results, failures = scanDatabasesWithFailures(
         options=options,
         databases=databases,
         provider=args.provider,
         schema=args.schema,
-        include_system=args.include_system,
+        includeSystem=args.includeSystem,
         largest=args.largest,
         progress=ProgressReporter(args.progress),
-        continue_on_error=args.all_databases,
+        continueOnError=args.allDatabases,
     )
-    results = filter_scan_results(results, args.only_mismatches)
+    results = filterScanResults(results, args.onlyMismatches)
     if args.output:
-        write_scan_report(
+        writeScanReport(
             results,
             args.format,
             args.output,
-            only_mismatches=args.only_mismatches,
+            onlyMismatches=args.onlyMismatches,
             failures=failures,
-            scope=report_scope(args, databases),
+            scope=reportScope(args, databases),
         )
-    write_reindex_plan(results, args.sql_output, include_database_switches=args.all_databases)
-    return command_exit_code(args.strict_exit_code, [result.decision for result in results], failures)
+    writeReindexPlan(results, args.sqlOutput, includeDatabaseSwitches=args.allDatabases)
+    return commandExitCode(args.strictExitCode, [result.decision for result in results], failures)
 
 
-def resolve_databases(args: argparse.Namespace, options: ConnectionOptions) -> list[str]:
-    if args.all_databases:
-        return list_databases(options, args.maintenance_db)
-    return [args.database or args.maintenance_db]
+def resolveDatabases(args: argparse.Namespace, options: ConnectionOptions) -> list[str]:
+    if args.allDatabases:
+        return listDatabases(options, args.maintenanceDb)
+    return [args.database or args.maintenanceDb]
 
 
-def version_check_database(args: argparse.Namespace) -> str:
-    if getattr(args, "all_databases", False):
-        return args.maintenance_db
-    return getattr(args, "database", None) or args.maintenance_db
+def versionCheckDatabase(args: argparse.Namespace) -> str:
+    if getattr(args, "allDatabases", False):
+        return args.maintenanceDb
+    return getattr(args, "database", None) or args.maintenanceDb
 
 
-def scan_exit_code(strict: bool, decisions: list[str]) -> int:
+def scanExitCode(strict: bool, decisions: list[str]) -> int:
     if not strict:
         return OK
     if any("REINDEX" in decision for decision in decisions):
@@ -294,37 +297,42 @@ def scan_exit_code(strict: bool, decisions: list[str]) -> int:
     return OK
 
 
-def command_exit_code(strict: bool, decisions: list[str], failures: list | None = None) -> int:
+def commandExitCode(strict: bool, decisions: list[str], failures: list | None = None) -> int:
     if failures:
         return PARTIAL_FAILURE
-    return scan_exit_code(strict, decisions)
+    return scanExitCode(strict, decisions)
 
 
-def report_scope(args: argparse.Namespace, databases: list[str]) -> dict[str, object]:
+def reportScope(args: argparse.Namespace, databases: list[str]) -> dict[str, object]:
     scope: dict[str, object] = {
         "databases": databases,
         "schema": getattr(args, "schema", None),
         "provider": getattr(args, "provider", None),
-        "include_system": getattr(args, "include_system", False),
+        "include_system": getattr(args, "includeSystem", False),
         "largest": getattr(args, "largest", None),
-        "only_mismatches": getattr(args, "only_mismatches", False),
-        "all_databases": getattr(args, "all_databases", False),
+        "only_mismatches": getattr(args, "onlyMismatches", False),
+        "all_databases": getattr(args, "allDatabases", False),
     }
-    for name in ("access_method", "mode", "verify_mode"):
-        if hasattr(args, name):
-            scope[name] = getattr(args, name)
+    optionalScopeFields = {
+        "accessMethod": "access_method",
+        "mode": "mode",
+        "verifyMode": "verify_mode",
+    }
+    for attrName, scopeName in optionalScopeFields.items():
+        if hasattr(args, attrName):
+            scope[scopeName] = getattr(args, attrName)
     return scope
 
 
-def positive_int(value: str) -> int:
+def positiveInt(value: str) -> int:
     parsed = int(value)
     if parsed < 1:
         raise argparse.ArgumentTypeError("value must be a positive integer")
     return parsed
 
 
-def filter_scan_results(results, only_mismatches: bool):
-    if not only_mismatches:
+def filterScanResults(results, onlyMismatches: bool):
+    if not onlyMismatches:
         return results
     return [
         result
@@ -333,8 +341,8 @@ def filter_scan_results(results, only_mismatches: bool):
     ]
 
 
-def filter_amcheck_results(results, only_mismatches: bool):
-    if not only_mismatches:
+def filterAmcheckResults(results, onlyMismatches: bool):
+    if not onlyMismatches:
         return results
     return [
         result
@@ -343,11 +351,11 @@ def filter_amcheck_results(results, only_mismatches: bool):
     ]
 
 
-def filter_compare_results(results, only_mismatches: bool):
-    if not only_mismatches:
+def filterCompareResults(results, onlyMismatches: bool):
+    if not onlyMismatches:
         return results
     return [
         result
         for result in results
-        if result.final_decision != "OK"
+        if result.finalDecision != "OK"
     ]

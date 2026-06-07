@@ -10,7 +10,7 @@ from . import __version__
 from .models import AmcheckResult, CompareResult, DatabaseFailure, ScanResult
 
 
-def human_size(size: int | None) -> str:
+def humanSize(size: int | None) -> str:
     if size is None:
         return ""
     value = float(size)
@@ -23,21 +23,21 @@ def human_size(size: int | None) -> str:
     return f"{value:.1f} TB"
 
 
-def write_scan_report(
+def writeScanReport(
     results: list[ScanResult],
-    output_format: str,
+    outputFormat: str,
     output: str | None = None,
-    only_mismatches: bool = False,
+    onlyMismatches: bool = False,
     failures: list[DatabaseFailure] | None = None,
     scope: dict[str, Any] | None = None,
 ) -> None:
     failures = failures or []
-    if output_format == "json":
-        write_text(
+    if outputFormat == "json":
+        writeText(
             json.dumps(
-                build_json_report(
+                buildJsonReport(
                     command="scan",
-                    results=[result.to_dict() for result in results],
+                    results=[result.toDict() for result in results],
                     failures=failures,
                     scope=scope,
                     summary={
@@ -51,24 +51,24 @@ def write_scan_report(
             output,
         )
         return
-    write_text(format_scan_table(results, only_mismatches, failures), output)
+    writeText(formatScanTable(results, onlyMismatches, failures), output)
 
 
-def write_verify_report(
+def writeVerifyReport(
     results: list[AmcheckResult],
-    output_format: str,
+    outputFormat: str,
     output: str | None = None,
-    only_mismatches: bool = False,
+    onlyMismatches: bool = False,
     failures: list[DatabaseFailure] | None = None,
     scope: dict[str, Any] | None = None,
 ) -> None:
     failures = failures or []
-    if output_format == "json":
-        write_text(
+    if outputFormat == "json":
+        writeText(
             json.dumps(
-                build_json_report(
+                buildJsonReport(
                     command="verify",
-                    results=[result.to_dict() for result in results],
+                    results=[result.toDict() for result in results],
                     failures=failures,
                     scope=scope,
                     summary={
@@ -82,29 +82,29 @@ def write_verify_report(
             output,
         )
         return
-    write_text(format_verify_table(results, only_mismatches, failures), output)
+    writeText(formatVerifyTable(results, onlyMismatches, failures), output)
 
 
-def write_compare_report(
+def writeCompareReport(
     results: list[CompareResult],
-    output_format: str,
+    outputFormat: str,
     output: str | None = None,
-    only_mismatches: bool = False,
+    onlyMismatches: bool = False,
     failures: list[DatabaseFailure] | None = None,
     scope: dict[str, Any] | None = None,
 ) -> None:
     failures = failures or []
-    if output_format == "json":
-        write_text(
+    if outputFormat == "json":
+        writeText(
             json.dumps(
-                build_json_report(
+                buildJsonReport(
                     command="compare",
-                    results=[result.to_dict() for result in results],
+                    results=[result.toDict() for result in results],
                     failures=failures,
                     scope=scope,
                     summary={
-                        "reindex_count": sum(1 for result in results if "REINDEX" in result.final_decision),
-                        "unknown_count": sum(1 for result in results if result.final_decision == "UNKNOWN"),
+                        "reindex_count": sum(1 for result in results if "REINDEX" in result.finalDecision),
+                        "unknown_count": sum(1 for result in results if result.finalDecision == "UNKNOWN"),
                     },
                 ),
                 ensure_ascii=False,
@@ -113,10 +113,10 @@ def write_compare_report(
             output,
         )
         return
-    write_text(format_compare_table(results, only_mismatches, failures), output)
+    writeText(formatCompareTable(results, onlyMismatches, failures), output)
 
 
-def build_json_report(
+def buildJsonReport(
     command: str,
     results: list[dict[str, Any]],
     failures: list[DatabaseFailure],
@@ -139,195 +139,195 @@ def build_json_report(
             **summary,
         },
         "results": results,
-        "failures": [failure.to_dict() for failure in failures],
+        "failures": [failure.toDict() for failure in failures],
     }
 
 
-def format_scan_table(
+def formatScanTable(
     results: list[ScanResult],
-    only_mismatches: bool = False,
+    onlyMismatches: bool = False,
     failures: list[DatabaseFailure] | None = None,
 ) -> str:
     failures = failures or []
     if not results:
-        failure_text = format_failures(failures)
-        if only_mismatches:
-            return "No collation version mismatches or UNKNOWN states were found.\n" + failure_text
-        return "No B-tree indexes with collatable keys were found.\n" + failure_text
+        failureText = formatFailures(failures)
+        if onlyMismatches:
+            return "No collation version mismatches or UNKNOWN states were found.\n" + failureText
+        return "No B-tree indexes with collatable keys were found.\n" + failureText
 
-    table_rows: list[dict[str, str]] = []
+    tableRows: list[dict[str, str]] = []
     for result in results:
-        table_rows.append(
+        tableRows.append(
             {
-                "database": result.database_name,
-                "index": result.quoted_qualified_index,
-                "table": result.quoted_qualified_table,
-                "size": human_size(result.index_size_bytes),
-                "collations": format_collations(result),
+                "database": result.databaseName,
+                "index": result.quotedQualifiedIndex,
+                "table": result.quotedQualifiedTable,
+                "size": humanSize(result.indexSizeBytes),
+                "collations": formatCollations(result),
                 "decision": result.decision,
             }
         )
 
-    text = render_table(table_rows, ["database", "index", "table", "size", "collations", "decision"])
-    reindex_commands = [result.reindex_sql for result in results if "REINDEX" in result.decision]
-    unknown_results = [result for result in results if result.decision == "UNKNOWN"]
+    text = renderTable(tableRows, ["database", "index", "table", "size", "collations", "decision"])
+    reindexCommands = [result.reindexSql for result in results if "REINDEX" in result.decision]
+    unknownResults = [result for result in results if result.decision == "UNKNOWN"]
 
     lines = [text, ""]
-    if reindex_commands:
+    if reindexCommands:
         lines.append("REINDEX commands:")
-        lines.extend(f"  {command}" for command in reindex_commands)
+        lines.extend(f"  {command}" for command in reindexCommands)
     else:
         lines.append("No collation version mismatches were found.")
 
-    if unknown_results:
+    if unknownResults:
         lines.append("")
         lines.append("Indexes with unknown version state:")
-        lines.extend(f"  {result.database_name}: {result.qualified_index}" for result in unknown_results)
+        lines.extend(f"  {result.databaseName}: {result.qualifiedIndex}" for result in unknownResults)
 
-    return "\n".join(lines) + "\n" + format_failures(failures)
+    return "\n".join(lines) + "\n" + formatFailures(failures)
 
 
-def format_verify_table(
+def formatVerifyTable(
     results: list[AmcheckResult],
-    only_mismatches: bool = False,
+    onlyMismatches: bool = False,
     failures: list[DatabaseFailure] | None = None,
 ) -> str:
     failures = failures or []
     if not results:
-        failure_text = format_failures(failures)
-        if only_mismatches:
-            return "No amcheck failures, skipped checks, or UNKNOWN states were found.\n" + failure_text
-        return "No B-tree indexes with collatable keys were found.\n" + failure_text
+        failureText = formatFailures(failures)
+        if onlyMismatches:
+            return "No amcheck failures, skipped checks, or UNKNOWN states were found.\n" + failureText
+        return "No B-tree indexes with collatable keys were found.\n" + failureText
 
-    table_rows = [
+    tableRows = [
         {
-            "database": result.database_name,
-            "index": result.quoted_qualified_index,
-            "table": result.quoted_qualified_table,
-            "size": human_size(result.index_size_bytes),
+            "database": result.databaseName,
+            "index": result.quotedQualifiedIndex,
+            "table": result.quotedQualifiedTable,
+            "size": humanSize(result.indexSizeBytes),
             "mode": result.mode,
             "status": result.status,
-            "duration": "" if result.duration_ms is None else f"{result.duration_ms} ms",
-            "error": compact_error(result.error_message),
+            "duration": "" if result.durationMs is None else f"{result.durationMs} ms",
+            "error": compactError(result.errorMessage),
         }
         for result in results
     ]
-    text = render_table(table_rows, ["database", "index", "table", "size", "mode", "status", "duration", "error"])
+    text = renderTable(tableRows, ["database", "index", "table", "size", "mode", "status", "duration", "error"])
     failed = [result for result in results if result.status == "AMCHECK_FAILED"]
     skipped = [result for result in results if result.status.startswith("SKIPPED")]
 
     lines = [text, ""]
-    lines.append(cost_note("amcheck", len(results)))
+    lines.append(costNote("amcheck", len(results)))
     lines.append("")
     if failed:
         lines.append("Indexes that should be rebuilt after amcheck failure:")
-        lines.extend(f"  {result.reindex_sql}" for result in failed)
+        lines.extend(f"  {result.reindexSql}" for result in failed)
     else:
         lines.append("No amcheck B-tree failures were reported.")
 
     if skipped:
         lines.append("")
         lines.append("Skipped checks:")
-        lines.extend(f"  {result.database_name}: {result.qualified_index} ({result.status})" for result in skipped)
+        lines.extend(f"  {result.databaseName}: {result.qualifiedIndex} ({result.status})" for result in skipped)
 
-    return "\n".join(lines) + "\n" + format_failures(failures)
+    return "\n".join(lines) + "\n" + formatFailures(failures)
 
 
-def format_compare_table(
+def formatCompareTable(
     results: list[CompareResult],
-    only_mismatches: bool = False,
+    onlyMismatches: bool = False,
     failures: list[DatabaseFailure] | None = None,
 ) -> str:
     failures = failures or []
     if not results:
-        failure_text = format_failures(failures)
-        if only_mismatches:
-            return "No final REINDEX or UNKNOWN verdicts were produced.\n" + failure_text
-        return "No B-tree indexes with collatable keys were found.\n" + failure_text
+        failureText = formatFailures(failures)
+        if onlyMismatches:
+            return "No final REINDEX or UNKNOWN verdicts were produced.\n" + failureText
+        return "No B-tree indexes with collatable keys were found.\n" + failureText
 
-    table_rows = [
+    tableRows = [
         {
-            "database": result.scan.database_name,
-            "index": result.scan.quoted_qualified_index,
+            "database": result.scan.databaseName,
+            "index": result.scan.quotedQualifiedIndex,
             "catalog": result.scan.decision,
             "amcheck": result.amcheck.status if result.amcheck else "",
-            "final": result.final_decision,
+            "final": result.finalDecision,
             "reason": result.reason,
         }
         for result in results
     ]
-    text = render_table(table_rows, ["database", "index", "catalog", "amcheck", "final", "reason"])
-    reindex_commands = [
-        result.scan.reindex_sql
+    text = renderTable(tableRows, ["database", "index", "catalog", "amcheck", "final", "reason"])
+    reindexCommands = [
+        result.scan.reindexSql
         for result in results
-        if "REINDEX" in result.final_decision
+        if "REINDEX" in result.finalDecision
     ]
 
     lines = [text, ""]
-    amcheck_count = sum(1 for result in results if result.amcheck is not None)
-    lines.append(cost_note("compare", amcheck_count))
+    amcheckCount = sum(1 for result in results if result.amcheck is not None)
+    lines.append(costNote("compare", amcheckCount))
     lines.append("")
-    if reindex_commands:
+    if reindexCommands:
         lines.append("REINDEX commands:")
-        lines.extend(f"  {command}" for command in reindex_commands)
+        lines.extend(f"  {command}" for command in reindexCommands)
     else:
         lines.append("No final REINDEX verdicts were produced.")
-    return "\n".join(lines) + "\n" + format_failures(failures)
+    return "\n".join(lines) + "\n" + formatFailures(failures)
 
 
-def format_failures(failures: list[DatabaseFailure]) -> str:
+def formatFailures(failures: list[DatabaseFailure]) -> str:
     if not failures:
         return ""
     rows = [
         {
-            "database": failure.database_name,
+            "database": failure.databaseName,
             "command": failure.command,
-            "error": compact_error(failure.message),
+            "error": compactError(failure.message),
         }
         for failure in failures
     ]
-    return "\nPartial failures:\n" + render_table(rows, ["database", "command", "error"]) + "\n"
+    return "\nPartial failures:\n" + renderTable(rows, ["database", "command", "error"]) + "\n"
 
 
-def cost_note(command: str, index_count: int) -> str:
+def costNote(command: str, indexCount: int) -> str:
     if command == "amcheck":
         return (
-            f"Cost note: amcheck checked {index_count} index(es); "
+            f"Cost note: amcheck checked {indexCount} index(es); "
             "amcheck reads index pages and can wait for PostgreSQL locks."
         )
     return (
-        f"Cost note: {command} ran amcheck for {index_count} index(es); "
+        f"Cost note: {command} ran amcheck for {indexCount} index(es); "
         "amcheck reads index pages and can wait for PostgreSQL locks."
     )
 
 
-def format_collations(result: ScanResult) -> str:
+def formatCollations(result: ScanResult) -> str:
     parts: list[str] = []
     for dependency in result.dependencies:
-        key_label = dependency.key_name
-        if dependency.key_name in ("<expression>", "<index dependency>"):
-            key_label = dependency.key_expression
-        name = dependency.quoted_qualified_collation
-        provider = dependency.provider_name
+        keyLabel = dependency.keyName
+        if dependency.keyName in ("<expression>", "<index dependency>"):
+            keyLabel = dependency.keyExpression
+        name = dependency.quotedQualifiedCollation
+        provider = dependency.providerName
         status = dependency.status
-        if dependency.stored_version is None and dependency.actual_version is None:
+        if dependency.storedVersion is None and dependency.actualVersion is None:
             version = "unversioned"
         else:
-            version = f"{dependency.stored_version or '?'}->{dependency.actual_version or '?'}"
-        parts.append(f"{key_label}:{name}/{provider}/{version}/{status}")
+            version = f"{dependency.storedVersion or '?'}->{dependency.actualVersion or '?'}"
+        parts.append(f"{keyLabel}:{name}/{provider}/{version}/{status}")
     return "; ".join(parts)
 
 
-def compact_error(message: str | None) -> str:
+def compactError(message: str | None) -> str:
     if not message:
         return ""
-    first_line = message.splitlines()[0]
-    if len(first_line) > 90:
-        return first_line[:87] + "..."
-    return first_line
+    firstLine = message.splitlines()[0]
+    if len(firstLine) > 90:
+        return firstLine[:87] + "..."
+    return firstLine
 
 
-def render_table(rows: list[dict[str, str]], columns: list[str]) -> str:
+def renderTable(rows: list[dict[str, str]], columns: list[str]) -> str:
     widths = {
         column: max(len(column), *(len(row[column]) for row in rows))
         for column in columns
@@ -341,51 +341,51 @@ def render_table(rows: list[dict[str, str]], columns: list[str]) -> str:
     return "\n".join(lines)
 
 
-def write_reindex_plan(
+def writeReindexPlan(
     results: Iterable[ScanResult],
     output: str | None = None,
-    include_database_switches: bool = False,
+    includeDatabaseSwitches: bool = False,
 ) -> None:
-    result_list = list(results)
+    resultList = list(results)
     lines = [
         "-- Generated by pgcollcheck.",
         "-- Run REINDEX first. Run REFRESH VERSION only after successful rebuild.",
         "",
     ]
-    refresh_commands: list[str] = []
-    seen_refresh: set[str] = set()
+    refreshCommands: list[str] = []
+    seenRefresh: set[str] = set()
 
-    current_database: str | None = None
-    for result in result_list:
+    currentDatabase: str | None = None
+    for result in resultList:
         if "REINDEX" not in result.decision:
             continue
-        if include_database_switches and result.database_name != current_database:
-            if current_database is not None:
+        if includeDatabaseSwitches and result.databaseName != currentDatabase:
+            if currentDatabase is not None:
                 lines.append("")
-            current_database = result.database_name
-            lines.append(f"-- Database: {result.database_name}")
-            lines.append(f"\\connect {quote_psql_argument(result.database_name)}")
+            currentDatabase = result.databaseName
+            lines.append(f"-- Database: {result.databaseName}")
+            lines.append(f"\\connect {quotePsqlArgument(result.databaseName)}")
             lines.append("")
-        lines.append(result.reindex_sql)
-        for command in result.refresh_sql:
-            if command not in seen_refresh:
-                seen_refresh.add(command)
-                refresh_commands.append(command)
+        lines.append(result.reindexSql)
+        for command in result.refreshSql:
+            if command not in seenRefresh:
+                seenRefresh.add(command)
+                refreshCommands.append(command)
 
-    if refresh_commands:
-        lines.extend(["", "-- After successful REINDEX:", *refresh_commands])
+    if refreshCommands:
+        lines.extend(["", "-- After successful REINDEX:", *refreshCommands])
     if len(lines) == 3:
         lines.append("-- No REINDEX commands are required by the current scan.")
-    write_text("\n".join(lines) + "\n", output)
+    writeText("\n".join(lines) + "\n", output)
 
 
-def quote_psql_argument(value: str) -> str:
+def quotePsqlArgument(value: str) -> str:
     if value.replace("_", "").isalnum():
         return value
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def write_text(text: str, output: str | None = None) -> None:
+def writeText(text: str, output: str | None = None) -> None:
     if output:
         Path(output).write_text(text, encoding="utf-8")
         return

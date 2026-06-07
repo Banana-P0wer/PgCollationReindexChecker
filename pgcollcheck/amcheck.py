@@ -6,7 +6,7 @@ from typing import Any
 
 from psycopg import sql
 
-from .discovery import list_index_collation_rows
+from .discovery import listIndexCollationRows
 from .models import (
     AMCHECK_FAILED,
     AMCHECK_OK,
@@ -18,7 +18,7 @@ from .models import (
     DatabaseFailure,
 )
 from .progress import ProgressReporter
-from .scanner import build_scan_results, limit_scan_results
+from .scanner import buildScanResults, limitScanResults
 
 
 LOCK_OR_TIMEOUT_SQLSTATES = {"55P03", "57014"}
@@ -27,24 +27,24 @@ PERMISSION_DENIED_SQLSTATES = {"42501"}
 
 @dataclass(frozen=True)
 class AmcheckFunction:
-    schema_name: str
-    function_name: str
-    argument_count: int
+    schemaName: str
+    functionName: str
+    argumentCount: int
 
 
-def verify_databases_with_failures(
+def verifyDatabasesWithFailures(
     options,
     databases: list[str],
     mode: str = "normal",
     provider: str = "all",
     schema: str | None = None,
-    include_system: bool = False,
+    includeSystem: bool = False,
     largest: int | None = None,
-    install_extension: bool = False,
-    lock_timeout: str = "5s",
-    statement_timeout: str = "30min",
+    installExtension: bool = False,
+    lockTimeout: str = "5s",
+    statementTimeout: str = "30min",
     progress: ProgressReporter | None = None,
-    continue_on_error: bool = False,
+    continueOnError: bool = False,
 ) -> tuple[list[AmcheckResult], list[DatabaseFailure]]:
     progress = progress or ProgressReporter()
     results: list[AmcheckResult] = []
@@ -53,85 +53,85 @@ def verify_databases_with_failures(
         progress.database("verifying", database)
         try:
             results.extend(
-                verify_database(
+                verifyDatabase(
                     options=options,
                     database=database,
                     mode=mode,
                     provider=provider,
                     schema=schema,
-                    include_system=include_system,
+                    includeSystem=includeSystem,
                     largest=largest,
-                    install_extension=install_extension,
-                    lock_timeout=lock_timeout,
-                    statement_timeout=statement_timeout,
+                    installExtension=installExtension,
+                    lockTimeout=lockTimeout,
+                    statementTimeout=statementTimeout,
                 )
             )
         except Exception as exc:
-            failure = DatabaseFailure.from_exception(database, "verify", exc)
-            if not continue_on_error:
-                raise failure.to_error() from exc
+            failure = DatabaseFailure.fromException(database, "verify", exc)
+            if not continueOnError:
+                raise failure.toError() from exc
             failures.append(failure)
             progress.write(f"failed verifying database {database}: {exc}")
-    return sort_amcheck_results(results), failures
+    return sortAmcheckResults(results), failures
 
 
-def verify_database(
+def verifyDatabase(
     options,
     database: str,
     mode: str = "normal",
     provider: str = "all",
     schema: str | None = None,
-    include_system: bool = False,
+    includeSystem: bool = False,
     largest: int | None = None,
-    install_extension: bool = False,
-    lock_timeout: str = "5s",
-    statement_timeout: str = "30min",
+    installExtension: bool = False,
+    lockTimeout: str = "5s",
+    statementTimeout: str = "30min",
 ) -> list[AmcheckResult]:
-    rows = list_index_collation_rows(
+    rows = listIndexCollationRows(
         options=options,
         database=database,
         provider=provider,
         schema=schema,
-        include_system=include_system,
+        includeSystem=includeSystem,
     )
-    candidates = limit_scan_results(build_scan_results(rows), largest)
+    candidates = limitScanResults(buildScanResults(rows), largest)
     if not candidates:
         return []
 
-    with options.connect(database, autocommit=True) as conn:
-        if not has_amcheck(conn):
-            if install_extension:
-                install_amcheck(conn)
+    with options.connect(database, autoCommit=True) as conn:
+        if not hasAmcheck(conn):
+            if installExtension:
+                installAmcheck(conn)
             else:
-                return [skipped_extension_result(candidate, mode) for candidate in candidates]
+                return [skippedExtensionResult(candidate, mode) for candidate in candidates]
 
-        functions = load_amcheck_functions(conn)
-        configure_timeouts(conn, lock_timeout, statement_timeout)
+        functions = loadAmcheckFunctions(conn)
+        configureTimeouts(conn, lockTimeout, statementTimeout)
         return [
-            run_amcheck_for_index(conn, candidate, mode, functions)
+            runAmcheckForIndex(conn, candidate, mode, functions)
             for candidate in candidates
         ]
 
 
-def has_amcheck(conn) -> bool:
+def hasAmcheck(conn) -> bool:
     with conn.cursor() as cur:
         cur.execute("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'amcheck') AS exists")
         return bool(cur.fetchone()["exists"])
 
 
-def install_amcheck(conn) -> None:
+def installAmcheck(conn) -> None:
     try:
         with conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS amcheck")
     except Exception:
         # CREATE EXTENSION IF NOT EXISTS can still race with another session.
         # If the extension appeared meanwhile, the desired state is achieved.
-        if has_amcheck(conn):
+        if hasAmcheck(conn):
             return
         raise
 
 
-def load_amcheck_functions(conn) -> dict[str, AmcheckFunction]:
+def loadAmcheckFunctions(conn) -> dict[str, AmcheckFunction]:
     query = """
         SELECT n.nspname, p.proname, p.pronargs
         FROM pg_proc p
@@ -149,89 +149,89 @@ def load_amcheck_functions(conn) -> dict[str, AmcheckFunction]:
             name = row["proname"]
             if name not in functions:
                 functions[name] = AmcheckFunction(
-                    schema_name=row["nspname"],
-                    function_name=name,
-                    argument_count=row["pronargs"],
+                    schemaName=row["nspname"],
+                    functionName=name,
+                    argumentCount=row["pronargs"],
                 )
     return functions
 
 
-def configure_timeouts(conn, lock_timeout: str, statement_timeout: str) -> None:
+def configureTimeouts(conn, lockTimeout: str, statementTimeout: str) -> None:
     with conn.cursor() as cur:
-        cur.execute("SELECT set_config('lock_timeout', %s, false)", (lock_timeout,))
-        cur.execute("SELECT set_config('statement_timeout', %s, false)", (statement_timeout,))
+        cur.execute("SELECT set_config('lock_timeout', %s, false)", (lockTimeout,))
+        cur.execute("SELECT set_config('statement_timeout', %s, false)", (statementTimeout,))
 
 
-def run_amcheck_for_index(conn, candidate, mode: str, functions: dict[str, AmcheckFunction]) -> AmcheckResult:
+def runAmcheckForIndex(conn, candidate, mode: str, functions: dict[str, AmcheckFunction]) -> AmcheckResult:
     started = time.perf_counter()
     try:
         with conn.cursor() as cur:
-            cur.execute(build_amcheck_call(mode, functions), build_amcheck_params(candidate.index_oid, mode, functions))
+            cur.execute(buildAmcheckCall(mode, functions), buildAmcheckParams(candidate.indexOid, mode, functions))
             cur.fetchone()
         status = AMCHECK_OK
         sqlstate = None
         message = None
     except Exception as exc:
-        status = classify_amcheck_error(exc)
+        status = classifyAmcheckError(exc)
         sqlstate = getattr(exc, "sqlstate", None)
         message = str(exc).strip()
 
-    duration_ms = int((time.perf_counter() - started) * 1000)
+    durationMs = int((time.perf_counter() - started) * 1000)
     return AmcheckResult(
-        database_name=candidate.database_name,
-        index_oid=candidate.index_oid,
-        index_schema=candidate.index_schema,
-        index_name=candidate.index_name,
-        table_schema=candidate.table_schema,
-        table_name=candidate.table_name,
-        index_size_bytes=candidate.index_size_bytes,
+        databaseName=candidate.databaseName,
+        indexOid=candidate.indexOid,
+        indexSchema=candidate.indexSchema,
+        indexName=candidate.indexName,
+        tableSchema=candidate.tableSchema,
+        tableName=candidate.tableName,
+        indexSizeBytes=candidate.indexSizeBytes,
         mode=mode,
         status=status,
-        duration_ms=duration_ms,
-        error_sqlstate=sqlstate,
-        error_message=message,
-        reindex_sql=candidate.reindex_sql,
-        index_definition=candidate.index_definition,
+        durationMs=durationMs,
+        errorSqlstate=sqlstate,
+        errorMessage=message,
+        reindexSql=candidate.reindexSql,
+        indexDefinition=candidate.indexDefinition,
     )
 
 
-def build_amcheck_call(mode: str, functions: dict[str, AmcheckFunction]) -> sql.Composed:
-    function = function_for_mode(mode, functions)
-    function_identifier = sql.Identifier(function.schema_name, function.function_name)
+def buildAmcheckCall(mode: str, functions: dict[str, AmcheckFunction]) -> sql.Composed:
+    function = functionForMode(mode, functions)
+    functionIdentifier = sql.Identifier(function.schemaName, function.functionName)
     if mode in ("quick", "normal"):
         placeholders = sql.SQL("%s::oid::regclass, %s")
-        if function.argument_count >= 3:
+        if function.argumentCount >= 3:
             placeholders = sql.SQL("%s::oid::regclass, %s, %s")
     else:
         placeholders = sql.SQL("%s::oid::regclass, %s, %s")
-        if function.argument_count >= 4:
+        if function.argumentCount >= 4:
             placeholders = sql.SQL("%s::oid::regclass, %s, %s, %s")
-    return sql.SQL("SELECT {}({})").format(function_identifier, placeholders)
+    return sql.SQL("SELECT {}({})").format(functionIdentifier, placeholders)
 
 
-def build_amcheck_params(index_oid: int, mode: str, functions: dict[str, AmcheckFunction]) -> tuple[Any, ...]:
-    function = function_for_mode(mode, functions)
+def buildAmcheckParams(indexOid: int, mode: str, functions: dict[str, AmcheckFunction]) -> tuple[Any, ...]:
+    function = functionForMode(mode, functions)
     if mode == "quick":
-        params: tuple[Any, ...] = (index_oid, False)
+        params: tuple[Any, ...] = (indexOid, False)
     elif mode == "normal":
-        params = (index_oid, True)
+        params = (indexOid, True)
     else:
-        params = (index_oid, True, True)
-    if (mode in ("quick", "normal") and function.argument_count >= 3) or (
-        mode == "deep" and function.argument_count >= 4
+        params = (indexOid, True, True)
+    if (mode in ("quick", "normal") and function.argumentCount >= 3) or (
+        mode == "deep" and function.argumentCount >= 4
     ):
         params = (*params, True)
     return params
 
 
-def function_for_mode(mode: str, functions: dict[str, AmcheckFunction]) -> AmcheckFunction:
+def functionForMode(mode: str, functions: dict[str, AmcheckFunction]) -> AmcheckFunction:
     name = "bt_index_parent_check" if mode == "deep" else "bt_index_check"
     if name not in functions:
         raise RuntimeError(f"amcheck function {name} was not found")
     return functions[name]
 
 
-def classify_amcheck_error(exc: Exception) -> str:
+def classifyAmcheckError(exc: Exception) -> str:
     sqlstate = getattr(exc, "sqlstate", None)
     if sqlstate in LOCK_OR_TIMEOUT_SQLSTATES:
         return AMCHECK_TIMEOUT
@@ -240,26 +240,26 @@ def classify_amcheck_error(exc: Exception) -> str:
     return AMCHECK_FAILED if sqlstate else AMCHECK_UNKNOWN_ERROR
 
 
-def skipped_extension_result(candidate, mode: str) -> AmcheckResult:
+def skippedExtensionResult(candidate, mode: str) -> AmcheckResult:
     return AmcheckResult(
-        database_name=candidate.database_name,
-        index_oid=candidate.index_oid,
-        index_schema=candidate.index_schema,
-        index_name=candidate.index_name,
-        table_schema=candidate.table_schema,
-        table_name=candidate.table_name,
-        index_size_bytes=candidate.index_size_bytes,
+        databaseName=candidate.databaseName,
+        indexOid=candidate.indexOid,
+        indexSchema=candidate.indexSchema,
+        indexName=candidate.indexName,
+        tableSchema=candidate.tableSchema,
+        tableName=candidate.tableName,
+        indexSizeBytes=candidate.indexSizeBytes,
         mode=mode,
         status=AMCHECK_SKIPPED_EXTENSION_MISSING,
-        duration_ms=None,
-        error_sqlstate=None,
-        error_message="amcheck extension is not installed in this database",
-        reindex_sql=candidate.reindex_sql,
-        index_definition=candidate.index_definition,
+        durationMs=None,
+        errorSqlstate=None,
+        errorMessage="amcheck extension is not installed in this database",
+        reindexSql=candidate.reindexSql,
+        indexDefinition=candidate.indexDefinition,
     )
 
 
-def sort_amcheck_results(results: list[AmcheckResult]) -> list[AmcheckResult]:
+def sortAmcheckResults(results: list[AmcheckResult]) -> list[AmcheckResult]:
     priority = {
         AMCHECK_FAILED: 0,
         AMCHECK_TIMEOUT: 1,
@@ -272,8 +272,8 @@ def sort_amcheck_results(results: list[AmcheckResult]) -> list[AmcheckResult]:
         results,
         key=lambda result: (
             priority.get(result.status, 99),
-            result.database_name,
-            result.index_schema,
-            result.index_name,
+            result.databaseName,
+            result.indexSchema,
+            result.indexName,
         ),
     )

@@ -13,18 +13,18 @@ class ConnectionOptions:
     user: str | None = None
     password: str | None = None
 
-    def connect(self, dbname: str | None = None, autocommit: bool = False):
+    def connect(self, databaseName: str | None = None, autoCommit: bool = False):
         try:
             import psycopg
-            from psycopg.rows import dict_row
+            from psycopg.rows import dict_row as dictRow
         except ImportError as exc:
             raise RuntimeError(
                 "Missing dependency psycopg. Install with: python3 -m pip install -e ."
             ) from exc
 
-        kwargs: dict[str, Any] = {"row_factory": dict_row, "autocommit": autocommit}
-        if dbname:
-            kwargs["dbname"] = dbname
+        kwargs: dict[str, Any] = {"row_factory": dictRow, "autocommit": autoCommit}
+        if databaseName:
+            kwargs["dbname"] = databaseName
         if self.host:
             kwargs["host"] = self.host
         if self.port:
@@ -39,5 +39,5 @@ class ConnectionOptions:
         return psycopg.connect(**kwargs)
 
 
-def read_sql(name: str) -> str:
+def readSql(name: str) -> str:
     return files("pgcollcheck").joinpath("sql", name).read_text(encoding="utf-8")

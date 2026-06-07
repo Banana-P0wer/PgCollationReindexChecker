@@ -6,13 +6,13 @@ import unittest
 from pathlib import Path
 
 
-def integration_enabled() -> bool:
+def integrationEnabled() -> bool:
     return os.environ.get("PGCOLLCHECK_INTEGRATION") == "1"
 
 
-@unittest.skipUnless(integration_enabled(), "set PGCOLLCHECK_INTEGRATION=1 to run PostgreSQL integration tests")
+@unittest.skipUnless(integrationEnabled(), "set PGCOLLCHECK_INTEGRATION=1 to run PostgreSQL integration tests")
 class PostgresIntegrationTest(unittest.TestCase):
-    schema_name = f"pgcollcheck_itest_{os.getpid()}"
+    schemaName = f"pgcollcheck_itest_{os.getpid()}"
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -27,25 +27,25 @@ class PostgresIntegrationTest(unittest.TestCase):
         cls.psycopg = psycopg
         cls.conn = psycopg.connect(dbname=cls.database, autocommit=True)
         try:
-            cls._setup_objects()
+            cls._setupObjects()
         except Exception as exc:
-            cls._drop_schema()
+            cls._dropSchema()
             raise unittest.SkipTest(f"could not create integration objects: {exc}") from exc
 
     @classmethod
     def tearDownClass(cls) -> None:
         if hasattr(cls, "conn"):
-            cls._drop_schema()
+            cls._dropSchema()
             cls.conn.close()
 
     @classmethod
-    def _setup_objects(cls) -> None:
+    def _setupObjects(cls) -> None:
         with cls.conn.cursor() as cur:
-            cur.execute(f'DROP SCHEMA IF EXISTS "{cls.schema_name}" CASCADE')
-            cur.execute(f'CREATE SCHEMA "{cls.schema_name}"')
+            cur.execute(f'DROP SCHEMA IF EXISTS "{cls.schemaName}" CASCADE')
+            cur.execute(f'CREATE SCHEMA "{cls.schemaName}"')
             cur.execute(
                 f"""
-                CREATE COLLATION "{cls.schema_name}".und_icu_mismatch (
+                CREATE COLLATION "{cls.schemaName}".und_icu_mismatch (
                     provider = icu,
                     locale = 'und',
                     version = '0'
@@ -54,7 +54,7 @@ class PostgresIntegrationTest(unittest.TestCase):
             )
             cur.execute(
                 f"""
-                CREATE TABLE "{cls.schema_name}".sample_strings (
+                CREATE TABLE "{cls.schemaName}".sample_strings (
                     id integer PRIMARY KEY,
                     name text NOT NULL,
                     nickname text NOT NULL
@@ -63,7 +63,7 @@ class PostgresIntegrationTest(unittest.TestCase):
             )
             cur.execute(
                 f"""
-                INSERT INTO "{cls.schema_name}".sample_strings (id, name, nickname)
+                INSERT INTO "{cls.schemaName}".sample_strings (id, name, nickname)
                 VALUES
                     (1, 'Ёлка', 'elka'),
                     (2, 'Ель', 'yel'),
@@ -74,31 +74,31 @@ class PostgresIntegrationTest(unittest.TestCase):
             cur.execute(
                 f"""
                 CREATE INDEX sample_strings_name_icu_mismatch_idx
-                ON "{cls.schema_name}".sample_strings
-                (name COLLATE "{cls.schema_name}".und_icu_mismatch)
+                ON "{cls.schemaName}".sample_strings
+                (name COLLATE "{cls.schemaName}".und_icu_mismatch)
                 """
             )
             cur.execute(
                 f"""
                 CREATE INDEX sample_strings_id_partial_icu_mismatch_idx
-                ON "{cls.schema_name}".sample_strings (id)
-                WHERE name COLLATE "{cls.schema_name}".und_icu_mismatch > 'm'
+                ON "{cls.schemaName}".sample_strings (id)
+                WHERE name COLLATE "{cls.schemaName}".und_icu_mismatch > 'm'
                 """
             )
             cur.execute(
                 f"""
                 CREATE INDEX sample_strings_nickname_default_idx
-                ON "{cls.schema_name}".sample_strings (nickname)
+                ON "{cls.schemaName}".sample_strings (nickname)
                 """
             )
 
     @classmethod
-    def _drop_schema(cls) -> None:
+    def _dropSchema(cls) -> None:
         with cls.conn.cursor() as cur:
-            cur.execute(f'DROP SCHEMA IF EXISTS "{cls.schema_name}" CASCADE')
+            cur.execute(f'DROP SCHEMA IF EXISTS "{cls.schemaName}" CASCADE')
 
-    def test_scan_provider_icu_reports_key_and_partial_version_mismatches(self) -> None:
-        project_root = Path(__file__).resolve().parents[1]
+    def testScanProviderIcuReportsKeyAndPartialVersionMismatches(self) -> None:
+        projectRoot = Path(__file__).resolve().parents[1]
         command = [
             sys.executable,
             "-m",
@@ -107,7 +107,7 @@ class PostgresIntegrationTest(unittest.TestCase):
             "--database",
             self.database,
             "--schema",
-            self.schema_name,
+            self.schemaName,
             "--provider",
             "icu",
             "--format",
@@ -117,7 +117,7 @@ class PostgresIntegrationTest(unittest.TestCase):
 
         completed = subprocess.run(
             command,
-            cwd=project_root,
+            cwd=projectRoot,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -130,25 +130,25 @@ class PostgresIntegrationTest(unittest.TestCase):
         self.assertEqual(report["command"], "scan")
         self.assertEqual(report["summary"]["reindex_count"], 2)
         self.assertEqual(len(results), 2)
-        by_name = {result["index_name"]: result for result in results}
+        byName = {result["index_name"]: result for result in results}
         self.assertEqual(
-            by_name["sample_strings_name_icu_mismatch_idx"]["decision"],
+            byName["sample_strings_name_icu_mismatch_idx"]["decision"],
             "REINDEX_RECOMMENDED_BY_COLLATION_VERSION",
         )
         self.assertEqual(
-            by_name["sample_strings_id_partial_icu_mismatch_idx"]["dependencies"][0]["dependency_source"],
+            byName["sample_strings_id_partial_icu_mismatch_idx"]["dependencies"][0]["dependency_source"],
             "pg_depend",
         )
         self.assertIn(
             "name COLLATE",
-            by_name["sample_strings_id_partial_icu_mismatch_idx"]["dependencies"][0]["key_expression"],
+            byName["sample_strings_id_partial_icu_mismatch_idx"]["dependencies"][0]["key_expression"],
         )
         for result in results:
             self.assertEqual(result["dependencies"][0]["provider_name"], "icu")
             self.assertEqual(result["dependencies"][0]["status"], "VERSION_MISMATCH")
 
-    def test_scan_reports_default_collation_index(self) -> None:
-        project_root = Path(__file__).resolve().parents[1]
+    def testScanReportsDefaultCollationIndex(self) -> None:
+        projectRoot = Path(__file__).resolve().parents[1]
         command = [
             sys.executable,
             "-m",
@@ -157,14 +157,14 @@ class PostgresIntegrationTest(unittest.TestCase):
             "--database",
             self.database,
             "--schema",
-            self.schema_name,
+            self.schemaName,
             "--format",
             "json",
         ]
 
         completed = subprocess.run(
             command,
-            cwd=project_root,
+            cwd=projectRoot,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -173,11 +173,11 @@ class PostgresIntegrationTest(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         report = json.loads(completed.stdout)
-        by_name = {result["index_name"]: result for result in report["results"]}
-        default_index = by_name["sample_strings_nickname_default_idx"]
-        self.assertEqual(default_index["decision"], "OK")
-        self.assertEqual(default_index["dependencies"][0]["collation_name"], "default")
-        self.assertEqual(default_index["dependencies"][0]["version_source"], "pg_database.datcollversion")
+        byName = {result["index_name"]: result for result in report["results"]}
+        defaultIndex = byName["sample_strings_nickname_default_idx"]
+        self.assertEqual(defaultIndex["decision"], "OK")
+        self.assertEqual(defaultIndex["dependencies"][0]["collation_name"], "default")
+        self.assertEqual(defaultIndex["dependencies"][0]["version_source"], "pg_database.datcollversion")
 
 
 if __name__ == "__main__":

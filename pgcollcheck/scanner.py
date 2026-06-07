@@ -2,42 +2,42 @@ from __future__ import annotations
 
 from typing import Any
 
-from .decision import classify_collation_version, decide_scan_result
-from .discovery import list_index_collation_rows
+from .decision import classifyCollationVersion, decideScanResult
+from .discovery import listIndexCollationRows
 from .models import CollationDependency, DatabaseFailure, ScanResult
 from .progress import ProgressReporter
 
 
-def scan_database(
+def scanDatabase(
     options,
     database: str,
     provider: str = "all",
-    access_method: str = "btree",
+    accessMethod: str = "btree",
     schema: str | None = None,
-    include_system: bool = False,
+    includeSystem: bool = False,
     largest: int | None = None,
 ) -> list[ScanResult]:
-    rows = list_index_collation_rows(
+    rows = listIndexCollationRows(
         options=options,
         database=database,
         provider=provider,
-        access_method=access_method,
+        accessMethod=accessMethod,
         schema=schema,
-        include_system=include_system,
+        includeSystem=includeSystem,
     )
-    return limit_scan_results(build_scan_results(rows), largest)
+    return limitScanResults(buildScanResults(rows), largest)
 
 
-def scan_databases_with_failures(
+def scanDatabasesWithFailures(
     options,
     databases: list[str],
     provider: str = "all",
-    access_method: str = "btree",
+    accessMethod: str = "btree",
     schema: str | None = None,
-    include_system: bool = False,
+    includeSystem: bool = False,
     largest: int | None = None,
     progress: ProgressReporter | None = None,
-    continue_on_error: bool = False,
+    continueOnError: bool = False,
 ) -> tuple[list[ScanResult], list[DatabaseFailure]]:
     progress = progress or ProgressReporter()
     results: list[ScanResult] = []
@@ -46,67 +46,67 @@ def scan_databases_with_failures(
         progress.database("scanning", database)
         try:
             results.extend(
-                scan_database(
+                scanDatabase(
                     options=options,
                     database=database,
                     provider=provider,
-                    access_method=access_method,
+                    accessMethod=accessMethod,
                     schema=schema,
-                    include_system=include_system,
+                    includeSystem=includeSystem,
                     largest=largest,
                 )
             )
         except Exception as exc:
-            failure = DatabaseFailure.from_exception(database, "scan", exc)
-            if not continue_on_error:
-                raise failure.to_error() from exc
+            failure = DatabaseFailure.fromException(database, "scan", exc)
+            if not continueOnError:
+                raise failure.toError() from exc
             failures.append(failure)
             progress.write(f"failed scanning database {database}: {exc}")
-    return sort_scan_results(results), failures
+    return sortScanResults(results), failures
 
 
-def build_scan_results(rows: list[dict[str, Any]]) -> list[ScanResult]:
+def buildScanResults(rows: list[dict[str, Any]]) -> list[ScanResult]:
     grouped: dict[tuple[str, int], ScanResult] = {}
     statuses: dict[tuple[str, int], list[str]] = {}
 
     for row in rows:
         key = (row["database_name"], row["index_oid"])
-        status = classify_collation_version(row["stored_version"], row["actual_version"])
+        status = classifyCollationVersion(row["stored_version"], row["actual_version"])
         dependency = CollationDependency(
-            database_name=row["database_name"],
-            key_position=row["key_position"],
-            key_name=row["key_name"],
-            key_type=row["key_type"],
-            key_expression=row["key_expression"],
-            opclass_name=row["opclass_name"],
-            dependency_source=row["dependency_source"],
-            collation_oid=row["collation_oid"],
-            collation_schema=row["collation_schema"],
-            collation_name=row["collation_name"],
-            collation_provider=row["collation_provider"],
-            effective_provider=row["effective_provider"],
-            stored_version=row["stored_version"],
-            actual_version=row["actual_version"],
-            version_source=row["version_source"],
+            databaseName=row["database_name"],
+            keyPosition=row["key_position"],
+            keyName=row["key_name"],
+            keyType=row["key_type"],
+            keyExpression=row["key_expression"],
+            opclassName=row["opclass_name"],
+            dependencySource=row["dependency_source"],
+            collationOid=row["collation_oid"],
+            collationSchema=row["collation_schema"],
+            collationName=row["collation_name"],
+            collationProvider=row["collation_provider"],
+            effectiveProvider=row["effective_provider"],
+            storedVersion=row["stored_version"],
+            actualVersion=row["actual_version"],
+            versionSource=row["version_source"],
             status=status,
-            refresh_sql=row["refresh_sql"],
+            refreshSql=row["refresh_sql"],
         )
 
         if key not in grouped:
             grouped[key] = ScanResult(
-                database_name=row["database_name"],
-                index_oid=row["index_oid"],
-                index_schema=row["index_schema"],
-                index_name=row["index_name"],
-                table_schema=row["table_schema"],
-                table_name=row["table_name"],
-                access_method=row["access_method"],
-                index_size_bytes=row["index_size_bytes"],
-                is_unique=row["is_unique"],
-                is_valid=row["is_valid"],
-                is_ready=row["is_ready"],
-                index_definition=row["index_definition"],
-                reindex_sql=row["reindex_sql"],
+                databaseName=row["database_name"],
+                indexOid=row["index_oid"],
+                indexSchema=row["index_schema"],
+                indexName=row["index_name"],
+                tableSchema=row["table_schema"],
+                tableName=row["table_name"],
+                accessMethod=row["access_method"],
+                indexSizeBytes=row["index_size_bytes"],
+                isUnique=row["is_unique"],
+                isValid=row["is_valid"],
+                isReady=row["is_ready"],
+                indexDefinition=row["index_definition"],
+                reindexSql=row["reindex_sql"],
                 decision="",
             )
             statuses[key] = []
@@ -115,12 +115,12 @@ def build_scan_results(rows: list[dict[str, Any]]) -> list[ScanResult]:
         statuses[key].append(status)
 
     for key, result in grouped.items():
-        result.decision = decide_scan_result(statuses[key])
+        result.decision = decideScanResult(statuses[key])
 
-    return sort_scan_results(list(grouped.values()))
+    return sortScanResults(list(grouped.values()))
 
 
-def sort_scan_results(results: list[ScanResult]) -> list[ScanResult]:
+def sortScanResults(results: list[ScanResult]) -> list[ScanResult]:
     priority = {
         "REINDEX_RECOMMENDED_BY_COLLATION_VERSION": 0,
         "UNKNOWN": 1,
@@ -130,39 +130,39 @@ def sort_scan_results(results: list[ScanResult]) -> list[ScanResult]:
         results,
         key=lambda result: (
             priority.get(result.decision, 99),
-            result.database_name,
-            result.index_schema,
-            result.index_name,
+            result.databaseName,
+            result.indexSchema,
+            result.indexName,
         ),
     )
 
 
-def limit_scan_results(results: list[ScanResult], largest: int | None) -> list[ScanResult]:
+def limitScanResults(results: list[ScanResult], largest: int | None) -> list[ScanResult]:
     if largest is None:
-        return sort_scan_results(results)
+        return sortScanResults(results)
 
     kept: dict[tuple[str, int], ScanResult] = {
-        (result.database_name, result.index_oid): result
+        (result.databaseName, result.indexOid): result
         for result in results
         if result.decision != "OK"
     }
-    per_database_counts: dict[str, int] = {}
-    by_size = sorted(
+    perDatabaseCounts: dict[str, int] = {}
+    bySize = sorted(
         results,
         key=lambda result: (
-            result.database_name,
-            -result.index_size_bytes,
-            result.index_schema,
-            result.index_name,
+            result.databaseName,
+            -result.indexSizeBytes,
+            result.indexSchema,
+            result.indexName,
         ),
     )
-    for result in by_size:
+    for result in bySize:
         if result.decision != "OK":
             continue
-        count = per_database_counts.get(result.database_name, 0)
+        count = perDatabaseCounts.get(result.databaseName, 0)
         if count >= largest:
             continue
-        kept[(result.database_name, result.index_oid)] = result
-        per_database_counts[result.database_name] = count + 1
+        kept[(result.databaseName, result.indexOid)] = result
+        perDatabaseCounts[result.databaseName] = count + 1
 
-    return sort_scan_results(list(kept.values()))
+    return sortScanResults(list(kept.values()))

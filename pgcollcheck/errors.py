@@ -12,15 +12,15 @@ class UnsupportedPostgresError(PgCollCheckError):
 class DatabaseOperationError(PgCollCheckError):
     def __init__(
         self,
-        database_name: str,
+        databaseName: str,
         command: str,
-        error_type: str,
+        errorType: str,
         message: str,
         sqlstate: str | None = None,
     ) -> None:
-        self.database_name = database_name
+        self.databaseName = databaseName
         self.command = command
-        self.error_type = error_type
+        self.errorType = errorType
         self.message = message
         self.sqlstate = sqlstate
         super().__init__(self.__str__())
@@ -28,6 +28,6 @@ class DatabaseOperationError(PgCollCheckError):
     def __str__(self) -> str:
         sqlstate = f", SQLSTATE {self.sqlstate}" if self.sqlstate else ""
         return (
-            f"{self.command} failed for database {self.database_name}: "
-            f"{self.error_type}: {self.message}{sqlstate}"
+            f"{self.command} failed for database {self.databaseName}: "
+            f"{self.errorType}: {self.message}{sqlstate}"
         )
