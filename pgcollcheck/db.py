@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
 from importlib.resources import files
 from typing import Any
 
@@ -15,8 +16,8 @@ class ConnectionOptions:
 
     def connect(self, databaseName: str | None = None, autoCommit: bool = False):
         try:
-            import psycopg
-            from psycopg.rows import dict_row as dictRow
+            psycopg = import_module("psycopg")
+            dictRow = import_module("psycopg.rows").dict_row
         except ImportError as exc:
             raise RuntimeError(
                 "Missing dependency psycopg. Install with: python3 -m pip install -e ."

@@ -4,8 +4,6 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from psycopg import sql
-
 from .discovery import listIndexCollationRows
 from .models import (
     AMCHECK_FAILED,
@@ -16,6 +14,7 @@ from .models import (
     AMCHECK_UNKNOWN_ERROR,
     AmcheckResult,
     DatabaseFailure,
+    quoteQualifiedName,
 )
 from .progress import ProgressReporter
 from .scanner import buildScanResults, limitScanResults
@@ -195,18 +194,18 @@ def runAmcheckForIndex(conn, candidate, mode: str, functions: dict[str, AmcheckF
     )
 
 
-def buildAmcheckCall(mode: str, functions: dict[str, AmcheckFunction]) -> sql.Composed:
+def buildAmcheckCall(mode: str, functions: dict[str, AmcheckFunction]) -> str:
     function = functionForMode(mode, functions)
-    functionIdentifier = sql.Identifier(function.schemaName, function.functionName)
     if mode in ("quick", "normal"):
-        placeholders = sql.SQL("%s::oid::regclass, %s")
+        placeholders = "%s::oid::regclass, %s"
         if function.argumentCount >= 3:
-            placeholders = sql.SQL("%s::oid::regclass, %s, %s")
+            placeholders = "%s::oid::regclass, %s, %s"
     else:
-        placeholders = sql.SQL("%s::oid::regclass, %s, %s")
+        placeholders = "%s::oid::regclass, %s, %s"
         if function.argumentCount >= 4:
-            placeholders = sql.SQL("%s::oid::regclass, %s, %s, %s")
-    return sql.SQL("SELECT {}({})").format(functionIdentifier, placeholders)
+            placeholders = "%s::oid::regclass, %s, %s, %s"
+    functionName = quoteQualifiedName(function.schemaName, function.functionName)
+    return f"SELECT {functionName}({placeholders})"
 
 
 def buildAmcheckParams(indexOid: int, mode: str, functions: dict[str, AmcheckFunction]) -> tuple[Any, ...]:

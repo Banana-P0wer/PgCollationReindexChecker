@@ -71,7 +71,7 @@ def buildParser() -> argparse.ArgumentParser:
 
     plan = subparsers.add_parser("plan-reindex", parents=[connectionParent()], help="generate SQL commands for indexes that need REINDEX")
     addScanArgs(plan, includeAccessMethod=True)
-    plan.add_argument("--sql-output", help="Write generated SQL to this file.")
+    plan.add_argument("--sql-output", dest="sqlOutput", help="Write generated SQL to this file.")
 
     return parser
 

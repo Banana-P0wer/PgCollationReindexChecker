@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import unittest
+from importlib import import_module
 from pathlib import Path
 
 
@@ -20,7 +21,7 @@ class PostgresIntegrationTest(unittest.TestCase):
         if not cls.database:
             raise unittest.SkipTest("set PGCOLLCHECK_TEST_DB or PGDATABASE for integration tests")
         try:
-            import psycopg
+            psycopg = import_module("psycopg")
         except ImportError as exc:
             raise unittest.SkipTest("psycopg is required for integration tests") from exc
 
